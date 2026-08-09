@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Seerr Request
 // @namespace    taznc.seerr
-// @version      1.0.0
+// @version      1.1.0
 // @description  Show Overseerr/Jellyseerr library status and request movies & TV from IMDb, Letterboxd, TMDb, and Trakt.
 // @author       joshashworth
 // @match        https://imdb.com/*
@@ -17,6 +17,9 @@
 // @connect      *
 // @run-at       document-idle
 // @noframes
+// @updateURL    https://raw.githubusercontent.com/Taznc/userscripts/main/seerr-request/seerr-request.user.js
+// @downloadURL  https://raw.githubusercontent.com/Taznc/userscripts/main/seerr-request/seerr-request.user.js
+// @supportURL   https://github.com/Taznc/userscripts/issues
 // ==/UserScript==
 
 (function () {

@@ -61,6 +61,38 @@ test('shouldHide: only hides per the active toggles', () => {
   assert.equal(S.shouldHide(available, { hideRequested: false, hideAvailable: false }), false);
 });
 
+test('hostMatches: only true for an exact, non-empty configured host', () => {
+  assert.equal(S.hostMatches('seerr.example.com', 'seerr.example.com'), true);
+  assert.equal(S.hostMatches('seerr.example.com', 'other.example.com'), false);
+  assert.equal(S.hostMatches(null, 'seerr.example.com'), false);
+  assert.equal(S.hostMatches('', 'seerr.example.com'), false);
+  assert.equal(S.hostMatches(undefined, ''), false);
+});
+
+const fakeButton = (hasSvg, text) => ({
+  querySelector: (sel) => (sel === 'svg' && hasSvg ? {} : null),
+  textContent: text,
+});
+const fakeDoc = (buttons) => ({ querySelectorAll: () => buttons });
+
+test('findFilterButton: requires both an svg child and "filter" in its text', () => {
+  const doc = fakeDoc([
+    fakeButton(false, 'Sign In'),
+    fakeButton(true, 'Play on Plex'), // has an icon, but not a filter button
+    fakeButton(true, '2 Active Filters'),
+  ]);
+  assert.equal(S.findFilterButton(doc).textContent, '2 Active Filters');
+});
+
+test('findFilterButton: text alone without an icon does not match (avoids stray text mentions)', () => {
+  const doc = fakeDoc([fakeButton(false, 'Clear all filters')]);
+  assert.equal(S.findFilterButton(doc), null);
+});
+
+test('findFilterButton: no buttons at all -> null, not a throw', () => {
+  assert.equal(S.findFilterButton(fakeDoc([])), null);
+});
+
 test('debounce: only the last call in a burst runs, after the delay', () => {
   let calls = 0;
   const fn = S.debounce(() => calls++, 10);

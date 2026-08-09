@@ -10,13 +10,22 @@ you don't already have.
 1. Install [Tampermonkey](https://www.tampermonkey.net/) (or Violentmonkey).
 2. Open `seerr-hide-toggle.user.js` — drag it into the browser, or paste it
    into Tampermonkey → Create new script.
-3. **Edit the `@match` line** to your own Seerr URL — it ships with a
-   placeholder (`https://your-seerr-domain.example/*`) on purpose, since
-   this repo is public and your instance's address isn't. In Tampermonkey's
-   editor, replace that one line with your real domain, e.g.
-   `@match https://seerr.example.com/*`, then save.
-4. Reload Seerr. Two buttons appear next to the filter bar (or in the
-   search bar on pages without one).
+3. Visit your Seerr instance. Click the Tampermonkey icon → **"Set this
+   site as my Seerr instance"** → confirm the prompted hostname → reload.
+
+The script matches every site (`@match *://*/*`) but only Tampermonkey's
+menu command actually configures where it does anything — your real
+hostname is stored in Tampermonkey's own storage, never in the script file.
+This is deliberate: Tampermonkey overwrites the *entire* script, metadata
+included, on every auto-update
+([confirmed behavior](https://github.com/Tampermonkey/tampermonkey/issues/2405)),
+so a hardcoded personal domain would get silently wiped back to a
+placeholder the next time this repo pushes an update. On every other site
+the script does one hostname check and exits — negligible cost, no UI, no
+observer.
+
+Two buttons appear next to the filter bar (or in the search bar on pages
+without one) once you're on the configured host.
 
 ## How status is detected
 
@@ -40,7 +49,8 @@ items (both render the same green badge in Seerr).
 node --test 'test/*.test.js'
 ```
 
-8 unit tests cover the color-matching logic and the debounce helper, no
+12 unit tests cover the color-matching logic, the host-gate, the filter-
+button finder, and the debounce helper, no
 DOM or browser needed. There's no browser harness for this script (unlike
 `seerr-request/`) — it manipulates your own private, authenticated Seerr
 instance, which isn't something to script fetches against from outside.

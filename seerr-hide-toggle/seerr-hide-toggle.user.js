@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         Seerr - Hide Requested/Available Toggle
 // @namespace    taznc.seerr-hide-toggle
-// @version      1.1.0
+// @version      1.2.0
 // @description  Toggle buttons to hide already-requested or already-available titles on Seerr's discover pages.
 // @author       joshashworth
-// @match        https://your-seerr-domain.example/*
+// @match        *://*/*
 // @run-at       document-idle
 // @grant        GM_setValue
 // @grant        GM_getValue
+// @grant        GM_registerMenuCommand
 // @updateURL    https://raw.githubusercontent.com/Taznc/userscripts/main/seerr-hide-toggle/seerr-hide-toggle.user.js
 // @downloadURL  https://raw.githubusercontent.com/Taznc/userscripts/main/seerr-hide-toggle/seerr-hide-toggle.user.js
 // @supportURL   https://github.com/Taznc/userscripts/issues
@@ -64,14 +65,61 @@
     };
   };
 
+  // Tampermonkey's auto-update replaces the ENTIRE script file, metadata
+  // included, on every version bump — confirmed against Tampermonkey's own
+  // issue tracker (github.com/Tampermonkey/tampermonkey/issues/2405). A
+  // hardcoded personal @match would silently revert to whatever ships in
+  // this public repo on the next update, breaking the script with no
+  // warning. So @match is intentionally '*://*/*' (matches everywhere) and
+  // the actual target host is stored in GM storage instead, configured
+  // once via the menu command below — update-proof by construction, since
+  // nothing update-sensitive lives in the metadata block.
+  const hostMatches = (configuredHost, hostname) => Boolean(configuredHost) && configuredHost === hostname;
+
+  // The old selector (button[class*="bg-gray-800/80"]) matches Seerr's
+  // generic default Button style, used by at least 6 unrelated components
+  // (dropdowns, slideovers, GenreCard hover state, ...) — confirmed against
+  // Seerr's own source. querySelector returns document order, so on some
+  // pages this could silently grab the wrong button. The filter button is
+  // specifically the one containing a FunnelIcon SVG *and* "filter" in its
+  // own text (Seerr's own copy: "N Active Filter(s)") — combining shape and
+  // text is meaningfully more specific than either alone, though it will
+  // miss the filter button on a non-English Seerr locale (Seerr uses
+  // react-intl; "filter" text won't match a translated label).
+  function findFilterButton(doc) {
+    for (const btn of doc.querySelectorAll('button')) {
+      if (btn.querySelector('svg') && /filter/i.test(btn.textContent || '')) return btn;
+    }
+    return null;
+  }
+
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { isRequested, isAvailable, shouldHide, hasBadgeColor, debounce };
+    module.exports = { isRequested, isAvailable, shouldHide, hasBadgeColor, debounce, hostMatches, findFilterButton };
     return;
   }
 
   // ------------------------------------------------------------------
   // Boot — DOM only, runs under a userscript manager
   // ------------------------------------------------------------------
+
+  // Registered unconditionally (before the host check) so it's reachable
+  // from Tampermonkey's menu on ANY page — including the first visit to
+  // your Seerr instance, before it's configured.
+  GM_registerMenuCommand('Set this site as my Seerr instance', () => {
+    const current = GM_getValue('seerrHost', null);
+    const next = window.prompt(
+      "Enter this site's hostname to enable the hide-toggle buttons here (e.g. seerr.example.com):",
+      current || location.hostname
+    );
+    if (next && next.trim()) {
+      GM_setValue('seerrHost', next.trim());
+      window.alert('Saved. Reload this page.');
+    }
+  });
+
+  if (!hostMatches(GM_getValue('seerrHost', null), location.hostname)) {
+    return; // not the configured Seerr host: do nothing further on this page
+  }
 
   const state = {
     hideRequested: GM_getValue('hideRequested', false),
@@ -126,7 +174,7 @@
     if (document.getElementById('seerr-hide-requested-toggle')) return;
 
     // Try filter bar first (discover pages)
-    const filterBtn = document.querySelector('button[class*="bg-gray-800\\/80"]');
+    const filterBtn = findFilterButton(document);
     if (filterBtn) {
       const container = filterBtn.closest('div');
       if (container) {

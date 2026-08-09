@@ -25,10 +25,10 @@ test('buttonState: unconfigured wins over everything', () => {
   assert.equal(b.active, true);
 });
 
-test('buttonState: network error -> offline', () => {
+test('buttonState: network error -> offline, active for click-to-retry', () => {
   const b = S.buttonState({ configured: true, error: { kind: 'offline' } });
   assert.equal(b.state, 'offline');
-  assert.equal(b.active, false);
+  assert.equal(b.active, true);
 });
 
 test('buttonState: loading -> checking', () => {
@@ -240,6 +240,53 @@ test('client: partial tv with an open season stays requestable', async () => {
   const r = await client.resolve('tmdb:1396', 'tv');
   assert.equal(r.seasonsExhausted, false);
   assert.equal(S.buttonState({ configured: true, result: r }).state, 'request');
+});
+
+const node = (isOurs) => ({
+  nodeType: 1,
+  hasAttribute: (k) => k === 'data-seerr-id' && isOurs,
+});
+const text = { nodeType: 3, hasAttribute: () => false };
+const rec = (added, removed) => ({ addedNodes: added, removedNodes: removed });
+
+test('isOurMutation: our additions are ours, site additions are not', () => {
+  assert.equal(S.isOurMutation([rec([node(true)], [])]), true);
+  assert.equal(S.isOurMutation([rec([node(false)], [])]), false);
+  assert.equal(S.isOurMutation([rec([text], [])]), true);
+  assert.equal(S.isOurMutation([rec([node(true), node(false)], [])]), false);
+});
+
+test('isOurMutation: ANY element removal re-routes (site stripping our button)', () => {
+  assert.equal(S.isOurMutation([rec([], [node(true)])]), false, 'our node removed by site');
+  assert.equal(S.isOurMutation([rec([], [node(false)])]), false, 'site node removed');
+  assert.equal(S.isOurMutation([rec([], [text])]), true, 'text removal is noise');
+});
+
+test('request(): keeps false/0 values, drops empty/null, guards NaN userId', async () => {
+  const t = fakeTransport([['/api/v1/request', { status: 201, json: { id: 1 } }]]);
+  const client = S.makeClient({ cfg: { ...cfg, userId: 'not-a-number' }, transport: t });
+  await client.request({ mediaType: 'movie', mediaId: 278, is4k: false, serverId: 0, rootFolder: '', tags: null });
+  const body = t.calls[0].body;
+  assert.equal(body.is4k, false, 'false is load-bearing, must survive');
+  assert.equal(body.serverId, 0, 'server id 0 is a real server');
+  assert.ok(!('rootFolder' in body), 'empty string dropped');
+  assert.ok(!('tags' in body), 'null dropped');
+  assert.ok(!('userId' in body), 'NaN userId never serialized');
+});
+
+test('findOpenRequest/findFailedRequest: non-4k filtering', () => {
+  const mi = {
+    requests: [
+      { id: 1, status: 4, is4k: true },
+      { id: 2, status: 4, is4k: false },
+      { id: 3, status: 2, is4k: true },
+      { id: 4, status: 1, is4k: false },
+    ],
+  };
+  assert.equal(S.findFailedRequest(mi).id, 2);
+  assert.equal(S.findOpenRequest(mi).id, 4);
+  assert.equal(S.findOpenRequest({}), null);
+  assert.equal(S.findFailedRequest(undefined), null);
 });
 
 test('shouldHideCard: hides only owned states, only when toggled on', () => {

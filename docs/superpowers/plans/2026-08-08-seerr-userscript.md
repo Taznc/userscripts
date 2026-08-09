@@ -18,7 +18,7 @@
 - All queries to /api/v1/search use a prefix: `imdb:tt…` or `tmdb:…`.
 - Fuzzy title matching is never used anywhere.
 - Status cache: GM storage, 1h TTL, LRU cap 500, invalidate on successful request.
-- List lookups: lazy via IntersectionObserver, max 4 concurrent.
+- List lookups: lazy via IntersectionObserver, max 8 concurrent (revised from 4 in the scroll-perf pass).
 - Every failure path resolves to a button state or toast; no exception escapes into the host page.
 
 ## File Structure

@@ -240,7 +240,7 @@ page load → adapter.list.cards(doc) → [{el, query}, …]
           → IntersectionObserver on each el
 card enters viewport
           → cache hit?  render dot, 0 calls
-          → cache miss? enqueue lookup (max 4 concurrent)
+          → cache miss? enqueue lookup (max 8 concurrent, LIFO — on-screen first)
                         → GET /api/v1/search?query=…
                         → write cache, render dot
 ```
@@ -248,7 +248,13 @@ card enters viewport
 Eager lookup of all cards is rejected: a 50-result IMDb page would fire 50
 parallel calls for cards that may never be scrolled to.
 
-**Dots render only for in-Plex, requested, and failed.** Absence of a dot means
+**Revised 2026-08-08 (user request):** every resolvable card now carries a
+labeled, actionable badge — blue Request (one-click), amber Requested
+(click-to-cancel when the request id is known), red Retry, green In Plex —
+and a persistent hide-owned toggle can collapse owned cards. The original
+rule below is superseded:
+
+~~**Dots render only for in-Plex, requested, and failed.**~~ Absence of a dot means
 not in library. A neutral dot on all 50 cards would be visual noise and doubles
 the DOM work for no information.
 

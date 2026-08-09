@@ -32,24 +32,34 @@
   // MediaStatus: 1 UNKNOWN 2 PENDING 3 PROCESSING 4 PARTIAL 5 AVAILABLE 6 DELETED
   // MediaRequestStatus: 1 PENDING 2 APPROVED 3 DECLINED 4 FAILED 5 COMPLETED
 
+  // The two request-shape predicates the whole script keys off. Centralized
+  // because "!q.is4k && open status" is exactly the invariant that drifts
+  // when written out four times.
+  const findFailedRequest = (mi) =>
+    ((mi && mi.requests) || []).find((q) => q.status === 4 && !q.is4k) || null;
+  const findOpenRequest = (mi) =>
+    ((mi && mi.requests) || []).find((q) => !q.is4k && (q.status === 1 || q.status === 2)) || null;
+
   // Ordered condition chain; first match wins. The FAILED-request check MUST
   // precede the PENDING/PROCESSING check: a failed request leaves media status
   // at 2/3, and checking media status first would render a permanently
   // disabled "Requested" badge with no path to recovery.
   function buttonState(lookup) {
     if (!lookup.configured) return { state: 'setup', label: 'Set up Seerr', active: true };
-    if (lookup.error) return { state: 'offline', label: 'Seerr offline', active: false };
+    // Offline is active: clicking re-runs the lookup instead of stranding
+    // the page in a dead state until navigation.
+    if (lookup.error) return { state: 'offline', label: 'Seerr offline — retry', active: true };
     if (lookup.loading) return { state: 'checking', label: 'Checking…', active: false };
     const r = lookup.result;
     if (!r) return { state: 'notfound', label: 'Not on TMDb', active: false };
     const mi = r.mediaInfo;
-    const failed = (mi && mi.requests ? mi.requests : []).find((q) => q.status === 4 && !q.is4k);
+    const failed = findFailedRequest(mi);
     if (failed) return { state: 'retry', label: 'Retry request', active: true, requestId: failed.id };
     const st = mi ? mi.status : undefined;
     if (st === 2 || st === 3) {
       // A known open (pending/approved, non-4K) request id makes the amber
       // state an undo button: click cancels via DELETE /request/{id}.
-      const open = (mi.requests || []).find((q) => !q.is4k && (q.status === 1 || q.status === 2));
+      const open = findOpenRequest(mi);
       return open
         ? { state: 'requested', label: 'Requested', active: true, cancelId: open.id }
         : { state: 'requested', label: 'Requested', active: false };
@@ -62,7 +72,7 @@
       if (r.seasonsExhausted) {
         // Nothing left to request: the truthful states are "Requested"
         // (cancellable when the open request id is known) or "In Plex".
-        const open = (mi.requests || []).find((q) => !q.is4k && (q.status === 1 || q.status === 2));
+        const open = findOpenRequest(mi);
         return open
           ? { state: 'requested', label: 'Requested', active: true, cancelId: open.id }
           : { state: 'available', label: 'In Plex', active: false };
@@ -135,8 +145,8 @@
   // what makes a "Requested" badge cancellable.
   function cacheEntryFrom(result) {
     const mi = result.mediaInfo || {};
-    const failed = (mi.requests || []).find((q) => q.status === 4 && !q.is4k);
-    const open = (mi.requests || []).find((q) => !q.is4k && (q.status === 1 || q.status === 2));
+    const failed = findFailedRequest(mi);
+    const open = findOpenRequest(mi);
     return {
       tmdbId: result.id,
       mediaType: result.mediaType,
@@ -166,6 +176,23 @@
   // the user turns on hiding. Actionable states always stay visible.
   function shouldHideCard(state, hideOwned) {
     return Boolean(hideOwned) && (state === 'available' || state === 'requested');
+  }
+
+  // A mutation batch is "ours" only when every ADDED element is script UI.
+  // Removals are asymmetric: a site framework stripping one of our nodes
+  // (React reconciliation) must schedule a re-route, or the button stays
+  // gone until an unrelated mutation. Site-node removals also re-route —
+  // route is debounced, idle-scheduled, and idempotent, so that is cheap.
+  function isOurMutation(records) {
+    for (const r of records) {
+      for (const n of r.addedNodes) {
+        if (n.nodeType === 1 && !n.hasAttribute('data-seerr-id')) return false;
+      }
+      for (const n of r.removedNodes) {
+        if (n.nodeType === 1) return false;
+      }
+    }
+    return true;
   }
 
   // First movie/tv result, honoring an optional media-type hint. The hint
@@ -248,7 +275,9 @@
           if (v !== undefined && v !== null && v !== '') payload[k] = v;
         }
         if (payload.userId === undefined && cfg.userId != null && cfg.userId !== '') {
-          payload.userId = Number(cfg.userId);
+          const uid = Number(cfg.userId);
+          // Garbage config would serialize NaN as null in the body.
+          if (Number.isFinite(uid)) payload.userId = uid;
         }
         return call('POST', '/api/v1/request', payload);
       },
@@ -464,6 +493,9 @@
       dotStateFor,
       cacheEntryFrom,
       shouldHideCard,
+      isOurMutation,
+      findOpenRequest,
+      findFailedRequest,
       adapters,
       safeExtract,
       safeCards,
@@ -664,8 +696,8 @@
     return wrap;
   };
 
-  const sel = (options, value) => {
-    const s = document.createElement('select');
+  const fillSel = (s, options, value) => {
+    s.textContent = '';
     for (const o of options) {
       const opt = document.createElement('option');
       opt.value = String(o.id);
@@ -673,6 +705,11 @@
       s.appendChild(opt);
     }
     if (value !== undefined) s.value = String(value);
+  };
+
+  const sel = (options, value) => {
+    const s = document.createElement('select');
+    fillSel(s, options, value);
     return s;
   };
 
@@ -772,16 +809,35 @@
       (s) => Boolean(s.server && s.server.is4k) === is4k && !s.unreachable
     );
     const auto = { id: '', name: 'Seerr default (auto)' };
-    const first = servers[0];
+    const server = sel(
+      servers.length
+        ? servers.map((s) => ({ id: s.server.id, name: s.server.name }))
+        : [{ id: '', name: is4k ? 'No 4K server' : 'No server' }]
+    );
+    const profile = sel([]);
+    const root = sel([]);
+    const dflt = servers.find((s) => s.server.isDefault) || servers[0] || null;
+    // Profile and root-folder lists always follow the SELECTED server —
+    // showing server B with server A's profile ids would apply a profile id
+    // against the wrong server.
+    const fill = () => {
+      const cur = servers.find((s) => String(s.server.id) === server.value) || dflt;
+      fillSel(profile, [auto, ...((cur && cur.profiles) || [])], '');
+      fillSel(
+        root,
+        [{ id: '', name: 'Seerr default' }, ...((cur && cur.rootFolders) || []).map((f) => ({ id: f.path, name: f.path }))],
+        ''
+      );
+    };
+    server.onchange = fill;
+    if (dflt) server.value = String(dflt.server.id);
+    fill();
     return {
       available: servers.length > 0,
-      server: sel(
-        servers.length
-          ? servers.map((s) => ({ id: s.server.id, name: s.server.name }))
-          : [{ id: '', name: is4k ? 'No 4K server' : 'No server' }]
-      ),
-      profile: sel([auto, ...((first && first.profiles) || [])], ''),
-      root: sel([{ id: '', name: 'Seerr default' }, ...((first && first.rootFolders) || []).map((f) => ({ id: f.path, name: f.path }))], ''),
+      server,
+      profile,
+      root,
+      defaultServerId: dflt ? dflt.server.id : null,
       servers,
     };
   }
@@ -857,7 +913,12 @@
       const k4Label = document.createElement('label');
       const k4 = document.createElement('input');
       k4.type = 'checkbox';
-      k4Label.append(k4, document.createTextNode('Request in 4K'));
+      // status4k tells us the 4K library state — offering a 4K request for
+      // a title already available/requested in 4K would just 409.
+      const s4 = (r.mediaInfo && r.mediaInfo.status4k) || 1;
+      const k4Note = s4 === 4 || s4 === 5 ? ' · already in Plex' : s4 === 2 || s4 === 3 ? ' · already requested' : '';
+      if (k4Note) k4.disabled = true;
+      k4Label.append(k4, document.createTextNode('Request in 4K' + k4Note));
       // 4K routes to a separate server with its own profiles: toggling
       // re-populates the selects, it does not filter them.
       k4.onchange = () => {
@@ -875,7 +936,13 @@
         const body = { mediaType: r.mediaType, mediaId: r.id, is4k };
         if (ctx.tvDetails) body.seasons = seasonBoxes.filter((b) => b.checked).map((b) => Number(b.dataset.season));
         if (controls.profile.value) body.profileId = Number(controls.profile.value);
-        if (controls.profile.value && controls.server.value !== '') body.serverId = Number(controls.server.value);
+        // A profile id is meaningless without its server, and an explicitly
+        // chosen non-default server matters even with the auto profile —
+        // dropping it silently routed the request to the default server.
+        const sid = controls.server.value === '' ? null : Number(controls.server.value);
+        if (sid !== null && (body.profileId !== undefined || sid !== controls.defaultServerId)) {
+          body.serverId = sid;
+        }
         if (controls.root.value) body.rootFolder = controls.root.value;
         if (userInput.value) body.userId = Number(userInput.value);
         try {
@@ -955,7 +1022,14 @@
     currentDetailKey = key;
     if (existing) existing.remove();
 
-    const anchorEl = adapter.detail.anchor(document);
+    // anchor() is adapter code like extract/cards: a redesign-induced throw
+    // must cost only the inline placement, not escape into the page.
+    let anchorEl = null;
+    try {
+      anchorEl = adapter.detail.anchor(document);
+    } catch (e) {
+      console.warn('[seerr] adapter "' + adapter.name + '" anchor failed:', e);
+    }
     const { host, root } = makeShadowHost('span', 'btn');
     host.style.cssText = 'display:inline-block;margin:6px 8px 6px 0;vertical-align:middle;';
     const container = document.createElement('span');
@@ -979,9 +1053,31 @@
       rerender({ configured: true, result: { ...result, mediaInfo: { status: 2, requests } } });
     };
 
+    let primaryBusy = false; // double-click on the button must not double-POST
     const handlers = {
       async primary(state) {
+        if (primaryBusy) return;
+        primaryBusy = true;
+        try {
+          await handlePrimary(state);
+        } finally {
+          primaryBusy = false;
+        }
+      },
+      options(state, rect) {
+        if (result.mediaType === 'tv') openTvPanel(rect);
+        else showRequestPanel({ rect, result, tvDetails: null, onDone: done });
+      },
+    };
+
+    async function handlePrimary(state) {
         if (state.state === 'setup') return showSettings();
+        if (state.state === 'offline') {
+          // Click-to-retry: re-run the whole lookup for this page.
+          currentDetailKey = null;
+          route(false);
+          return;
+        }
         if (state.state === 'retry') {
           try {
             await client().retry(state.requestId);
@@ -1028,12 +1124,7 @@
           // TV: seasons are a real decision — open the panel.
           openTvPanel(host.getBoundingClientRect());
         }
-      },
-      options(state, rect) {
-        if (result.mediaType === 'tv') openTvPanel(rect);
-        else showRequestPanel({ rect, result, tvDetails: null, onDone: done });
-      },
-    };
+    }
 
     const done = (body, wasDuplicate, resp) => {
       statusCache.invalidate(key);
@@ -1095,9 +1186,10 @@
   // Show/hide one card per the current toggle. Original inline display is
   // preserved so unhiding restores exactly what the site had.
   function applyCardVisibility(badge) {
-    const card = badge.__card;
+    const bs = badgeState.get(badge);
+    const card = bs && bs.card;
     if (!card) return;
-    if (shouldHideCard(badge.__state, hideOwned)) {
+    if (shouldHideCard(bs.state, hideOwned)) {
       if (card.style.display !== 'none') {
         card.__seerrDisplay = card.style.display;
         card.style.display = 'none';
@@ -1145,14 +1237,23 @@
   let inFlight = 0;
   const MAX_CONCURRENT = 8;
 
+  // Badge state lives in a script-scoped WeakMap, not element expandos:
+  // page scripts can reach the badge elements (they are page DOM), and a
+  // writable __entry would let a hostile script redirect what a genuine
+  // user click requests.
+  const badgeState = new WeakMap(); // badge el -> { entry, query, card, state }
+  const cardData = new WeakMap(); // card el -> { el, query, mediaType }
+
   function paintBadge(badge, state) {
     const s = BADGE_STYLES[state];
+    const bs = badgeState.get(badge);
+    if (!bs) return;
     // 'requested' is an undo button only when we know the request id.
-    const clickable = state === 'requested' ? Boolean(badge.__entry && badge.__entry.cancelId) : s.click;
-    badge.__state = state;
+    const clickable = state === 'requested' ? Boolean(bs.entry && bs.entry.cancelId) : s.click;
+    bs.state = state;
     badge.textContent =
-      state === 'request' && badge.__entry
-        ? badge.__entry.mediaType === 'tv'
+      state === 'request' && bs.entry
+        ? bs.entry.mediaType === 'tv'
           ? 'Request show'
           : 'Request movie'
         : s.label;
@@ -1172,12 +1273,18 @@
   // TV auto-requests all missing seasons (the season panel's default). A
   // second click on the resulting "Requested" badge cancels the request.
   async function badgeAction(badge) {
-    const prev = badge.__state;
+    const bs = badgeState.get(badge);
+    if (!bs || !bs.entry) return;
+    const prev = bs.state;
     if (prev !== 'request' && prev !== 'failed' && prev !== 'requested') return;
-    const entry = badge.__entry;
+    const entry = bs.entry;
+    // Guard the ids even though non-clickable states have pointer-events
+    // off — a synthetic click must never reach cancel(null)/retry(null).
+    if (prev === 'requested' && !entry.cancelId) return;
+    if (prev === 'failed' && !entry.failedId) return;
     const paintEntry = (updated, state) => {
-      statusCache.set(badge.__query, updated);
-      badge.__entry = updated;
+      statusCache.set(bs.query, updated);
+      bs.entry = updated;
       paintBadge(badge, state);
     };
     const markRequested = (resp) =>
@@ -1237,13 +1344,22 @@
       badge.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        // Badges are page DOM: a script on the site can dispatch synthetic
+        // clicks. Only real user input may spend the API key.
+        if (!e.isTrusted) return;
         badgeAction(badge);
       });
-      badge.__card = el;
+      badgeState.set(badge, { entry: null, query: null, card: el, state: 'busy' });
       el.appendChild(badge);
     }
-    badge.__entry = entry;
-    badge.__query = query;
+    let bs = badgeState.get(badge);
+    if (!bs) {
+      // Badge survived a framework re-parent that cloned it: re-adopt.
+      bs = { entry: null, query: null, card: el, state: 'busy' };
+      badgeState.set(badge, bs);
+    }
+    bs.entry = entry;
+    bs.query = query;
     paintBadge(badge, dotStateFor(entry));
   }
 
@@ -1256,7 +1372,12 @@
       client()
         .resolve(card.query, card.mediaType)
         .then((r) => {
-          if (!r) return;
+          if (!r) {
+            // Cache the miss too: not-on-TMDb titles otherwise re-fire a
+            // lookup on every viewport pass.
+            statusCache.set(card.query, { notFound: true });
+            return;
+          }
           const entry = cacheEntryFrom(r);
           statusCache.set(card.query, entry);
           renderDot(card.el, entry, card.query);
@@ -1276,10 +1397,11 @@
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
         cardObserver.unobserve(entry.target);
-        const card = entry.target.__seerrCard;
+        const card = cardData.get(entry.target);
+        if (!card) continue;
         const cached = statusCache.get(card.query);
         if (cached) {
-          renderDot(card.el, cached, card.query); // cache hit: zero calls
+          if (!cached.notFound) renderDot(card.el, cached, card.query); // cache hit: zero calls
         } else {
           lookupQueue.push(card);
           pumpQueue();
@@ -1298,16 +1420,19 @@
       if (card.query === currentDetailKey) continue; // don't badge the page itself
       if (seenCards.has(card.el)) continue;
       seenCards.add(card.el);
-      card.el.__seerrCard = card;
+      cardData.set(card.el, card);
       cardObserver.observe(card.el);
     }
   }
 
   // --- route ---------------------------------------------------------
 
-  // Test seam: a local harness page can simulate a site URL without
-  // Tampermonkey. Never set on real sites.
-  const hrefNow = () => window.__seerrHrefOverride || location.href;
+  // Test seam: the harness page simulates site URLs. Honored ONLY when no
+  // userscript manager is present (the harness stubs GM_getValue but not
+  // GM_info) — under Tampermonkey a hostile page setting this property
+  // must not be able to redirect which title the script resolves.
+  const hrefNow = () =>
+    (typeof GM_info === 'undefined' && window.__seerrHrefOverride) || location.href;
 
   function route(force) {
     if (force) currentDetailKey = null;
@@ -1324,7 +1449,13 @@
         break;
       }
     }
-    if (!matchedDetail) currentDetailKey = null;
+    if (!matchedDetail) {
+      currentDetailKey = null;
+      // A button surviving navigation to a page with no detail adapter
+      // would show the previous title's action.
+      const stale = document.querySelector('[data-seerr-id="btn"]');
+      if (stale) stale.remove();
+    }
     let matchedList = false;
     for (const adapter of adapters) {
       if (adapter.list && adapter.list.match.test(href)) {
@@ -1334,22 +1465,6 @@
       }
     }
     if (!matchedList) removeHidePill();
-  }
-
-  // A mutation is "ours" if every added/removed element is script UI
-  // (badges, hosts, pill). Without this filter, each badge insertion
-  // scheduled another full-page scan — the script was re-triggering itself
-  // for every badge it painted, which made scrolling stutter.
-  function isOurMutation(records) {
-    for (const r of records) {
-      for (const list of [r.addedNodes, r.removedNodes]) {
-        for (const n of list) {
-          if (n.nodeType !== 1) continue; // text nodes never carry cards
-          if (!n.hasAttribute('data-seerr-id')) return false;
-        }
-      }
-    }
-    return true;
   }
 
   // Chrome (and most browsers): run scans when the main thread is idle so

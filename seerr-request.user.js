@@ -423,9 +423,18 @@
   };
   const setProfiles = (p) => GM_setValue('seerr_profiles', p);
 
+  // The cache lives in memory and flushes to GM storage on a trailing
+  // debounce: GM_setValue re-serializes the whole store, and doing that per
+  // card made badges visibly slow on long lists.
+  let cacheData = GM_getValue('seerr_cache', null);
+  let cacheFlush = null;
   const statusCache = makeCache({
-    load: () => GM_getValue('seerr_cache', null),
-    save: (d) => GM_setValue('seerr_cache', d),
+    load: () => cacheData,
+    save: (d) => {
+      cacheData = d;
+      clearTimeout(cacheFlush);
+      cacheFlush = setTimeout(() => GM_setValue('seerr_cache', cacheData), 1500);
+    },
     now: () => Date.now(),
   });
 
@@ -995,7 +1004,7 @@
   const seenCards = new WeakSet();
   const lookupQueue = [];
   let inFlight = 0;
-  const MAX_CONCURRENT = 4;
+  const MAX_CONCURRENT = 8;
 
   function paintBadge(badge, state) {
     const s = BADGE_STYLES[state];
@@ -1075,7 +1084,9 @@
 
   function pumpQueue() {
     while (inFlight < MAX_CONCURRENT && lookupQueue.length) {
-      const { card } = { card: lookupQueue.shift() };
+      // LIFO: the most recently intersected card is the one on screen right
+      // now — it should beat cards scrolled past seconds ago.
+      const card = lookupQueue.pop();
       inFlight++;
       client()
         .resolve(card.query, card.mediaType)
@@ -1110,7 +1121,9 @@
         }
       }
     },
-    { rootMargin: '100px' }
+    // Start lookups ~a screen and a half before a card scrolls into view,
+    // so badges are usually already painted by the time you reach them.
+    { rootMargin: '1200px 0px' }
   );
 
   function listFlow(adapter) {
@@ -1151,7 +1164,7 @@
     GM_registerMenuCommand('Seerr settings', showSettings);
     // All four sites are SPAs: a one-shot mount dies on the first in-site
     // navigation. Observe, debounce, re-route; mounting is idempotent.
-    new MutationObserver(debounce(() => route(false), 200)).observe(document.body, {
+    new MutationObserver(debounce(() => route(false), 120)).observe(document.body, {
       childList: true,
       subtree: true,
     });

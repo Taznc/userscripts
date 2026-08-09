@@ -41,8 +41,8 @@ on install.
   labeled badges on covers: green **In Plex**, amber **Requested**, red
   **Retry**, blue **Request**. The blue and red ones are clickable: movies
   request in one click, TV auto-requests every season you're missing, red
-  retries the failed request. Lookups run lazily as cards scroll into view
-  (max 4 in-flight) and cache for an hour.
+  retries the failed request. Lookups start ~1200px ahead of your scroll
+  position (max 8 in-flight, on-screen cards first) and cache for an hour.
 - IMDb **episode** pages request the parent series.
 
 Letterboxd gets the button on film pages only — its poster grids don't

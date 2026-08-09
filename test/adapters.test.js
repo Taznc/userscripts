@@ -133,6 +133,48 @@ test('tmdb: movie and tv from URL, slug tolerated', () => {
   );
 });
 
+// tmdb's current frontend is Tailwind utility classes with no .card/.item —
+// confirmed live (Popular Movies grid): the old .closest('.card, .item, li')
+// matched 0 of 40 real cards. This builds a fixture matching the real
+// ancestor chain: a -> div -> div -> div[rounded-xl border ...] (the card).
+function tailwindCardAnchor(href, { depth = 3, cardClass = 'w-full rounded-xl border border-gray-200' } = {}) {
+  const card = { className: cardClass, tag: 'card' };
+  let cur = card;
+  // build depth plain wrapper divs between the card and the anchor
+  const wrappers = [];
+  for (let i = 0; i < depth; i++) {
+    const w = { className: 'flex w-full', parentElement: cur };
+    wrappers.unshift(w);
+    cur = w;
+  }
+  const a = { getAttribute: (k) => (k === 'href' ? href : null), parentElement: cur };
+  return a;
+}
+
+test('tmdb: list cards find the tailwind card ancestor, not a semantic .card class', () => {
+  const a1 = tailwindCardAnchor('/movie/969681-spider-man-brand-new-day');
+  const a2 = tailwindCardAnchor('/tv/1396-breaking-bad', { depth: 2 });
+  const doc = stubDoc({ 'a[href*="/movie/"], a[href*="/tv/"]': [a1, a2] });
+  const out = byName.tmdb.list.cards(doc);
+  assert.equal(out.length, 2);
+  assert.deepEqual(out.map((c) => c.query), ['tmdb:969681', 'tmdb:1396']);
+  assert.equal(out[0].mediaType, 'movie');
+  assert.equal(out[1].mediaType, 'tv');
+});
+
+test('tmdb: list cards dedupe repeated links to the same title (poster + title both link to it)', () => {
+  const a1 = tailwindCardAnchor('/movie/278-shawshank');
+  const a2 = tailwindCardAnchor('/movie/278-shawshank');
+  const doc = stubDoc({ 'a[href*="/movie/"], a[href*="/tv/"]': [a1, a2] });
+  assert.equal(byName.tmdb.list.cards(doc).length, 1);
+});
+
+test('tmdb: list cards skip links with no findable card ancestor within the search depth', () => {
+  const orphan = tailwindCardAnchor('/movie/1-orphan', { depth: 8 }); // beyond the 6-level walk
+  const doc = stubDoc({ 'a[href*="/movie/"], a[href*="/tv/"]': [orphan] });
+  assert.equal(byName.tmdb.list.cards(doc).length, 0);
+});
+
 // ---------------------------------------------------------------- trakt
 //
 // Trakt's 2026 SvelteKit rewrite removed all data-tmdb-id/themoviedb.org

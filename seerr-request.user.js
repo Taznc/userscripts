@@ -410,6 +410,20 @@
       list: {
         match: /^https:\/\/(www\.)?themoviedb\.org\/(discover|search|movie(?!\/\d)|tv(?!\/\d))/,
         cards(doc) {
+          // TMDb's current frontend is Tailwind utility classes with no
+          // semantic .card/.item — confirmed live (Popular Movies grid):
+          // .closest('.card, .item, li') matched 0 of 40 real cards. The
+          // visual card is a few ancestors up, identifiable only by the
+          // 'rounded-xl' + 'border' utility classes it always carries.
+          const findCard = (a) => {
+            let el = a;
+            for (let i = 0; i < 6 && el; i++) {
+              const c = el.className;
+              if (typeof c === 'string' && c.includes('rounded-xl') && c.includes('border')) return el;
+              el = el.parentElement;
+            }
+            return null;
+          };
           const seen = new Set();
           const out = [];
           for (const a of doc.querySelectorAll('a[href*="/movie/"], a[href*="/tv/"]')) {
@@ -417,7 +431,7 @@
             if (!m) continue;
             const key = m[1] + ':' + m[2];
             if (seen.has(key)) continue;
-            const el = a.closest('.card, .item, li');
+            const el = findCard(a);
             if (!el) continue;
             seen.add(key);
             out.push({ el, query: 'tmdb:' + m[2], mediaType: m[1] });

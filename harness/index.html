@@ -93,6 +93,7 @@ window.GM_xmlhttpRequest = (opts) => {
   });
   if (opts.url.includes('/api/v1/movie/278')) return respond(200, c.movieDetails || { mediaInfo: { status: 1 } });
   if (opts.url.includes('/retry')) return respond(200, { id: 412, status: 2 });
+  if (opts.method === 'DELETE' && opts.url.includes('/api/v1/request/')) return respond(204, {});
   if (opts.url.includes('/api/v1/request')) { log('[api] POST body:', opts.data); return respond(201, { id: 999 }); }
   return respond(404, {});
 };

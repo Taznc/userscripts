@@ -46,14 +46,23 @@
     const failed = (mi && mi.requests ? mi.requests : []).find((q) => q.status === 4 && !q.is4k);
     if (failed) return { state: 'retry', label: 'Retry request', active: true, requestId: failed.id };
     const st = mi ? mi.status : undefined;
-    if (st === 2 || st === 3) return { state: 'requested', label: 'Requested', active: false };
+    if (st === 2 || st === 3) {
+      // A known open (pending/approved, non-4K) request id makes the amber
+      // state an undo button: click cancels via DELETE /request/{id}.
+      const open = (mi.requests || []).find((q) => !q.is4k && (q.status === 1 || q.status === 2));
+      return open
+        ? { state: 'requested', label: 'Requested', active: true, cancelId: open.id }
+        : { state: 'requested', label: 'Requested', active: false };
+    }
     if (st === 5) return { state: 'available', label: 'In Plex', active: false };
+    const requestLabel =
+      r.mediaType === 'tv' ? 'Request show' : r.mediaType === 'movie' ? 'Request movie' : 'Request in Seerr';
     if (st === 4) {
       return r.mediaType === 'tv'
-        ? { state: 'request', label: 'Request in Seerr', active: true }
+        ? { state: 'request', label: requestLabel, active: true }
         : { state: 'available', label: 'In Plex', active: false };
     }
-    return { state: 'request', label: 'Request in Seerr', active: true };
+    return { state: 'request', label: requestLabel, active: true };
   }
 
   // From GET /api/v1/tv/{id}: which season checkboxes are checked/disabled.
@@ -114,6 +123,23 @@
     };
   }
 
+  // Flatten a resolve result into the small shape the status cache stores.
+  // cancelId is the open (pending/approved, non-4K) request, if any — it is
+  // what makes a "Requested" badge cancellable.
+  function cacheEntryFrom(result) {
+    const mi = result.mediaInfo || {};
+    const failed = (mi.requests || []).find((q) => q.status === 4 && !q.is4k);
+    const open = (mi.requests || []).find((q) => !q.is4k && (q.status === 1 || q.status === 2));
+    return {
+      tmdbId: result.id,
+      mediaType: result.mediaType,
+      status: mi.status || 1,
+      status4k: mi.status4k || 1,
+      failedId: failed ? failed.id : null,
+      cancelId: open ? open.id : null,
+    };
+  }
+
   // List-badge state from a cache entry. Requestable items get an actionable
   // 'request' badge (one-click from the list); failed gets 'retry-able'.
   function dotStateFor(entry) {
@@ -152,6 +178,7 @@
         throw clientError('offline', e && e.message);
       }
       if (resp.status === 401 || resp.status === 403) throw clientError('auth');
+      if (resp.status === 404) throw clientError('notfound');
       if (resp.status === 409) throw clientError('duplicate');
       // 202 = NoSeasonsAvailableError. In the 2xx range but NOTHING was
       // created — a naive 2xx check reports false success.
@@ -202,6 +229,10 @@
 
       retry(requestId) {
         return call('POST', '/api/v1/request/' + requestId + '/retry');
+      },
+
+      cancel(requestId) {
+        return call('DELETE', '/api/v1/request/' + requestId); // 204 on success
       },
 
       async services() {
@@ -401,6 +432,7 @@
       makeClient,
       pickResult,
       dotStateFor,
+      cacheEntryFrom,
       adapters,
       safeExtract,
       safeCards,
@@ -816,14 +848,14 @@
         if (controls.root.value) body.rootFolder = controls.root.value;
         if (userInput.value) body.userId = Number(userInput.value);
         try {
-          await client().request(body);
+          const resp = await client().request(body);
           closePanel();
-          ctx.onDone(body);
+          ctx.onDone(body, false, resp);
         } catch (e) {
           goBtn.disabled = false;
           if (e.kind === 'duplicate') {
             closePanel();
-            ctx.onDone(body, true);
+            ctx.onDone(body, true, null);
           } else {
             toastError(e);
           }
@@ -879,18 +911,6 @@
 
   let currentDetailKey = null;
 
-  function cacheEntryFrom(result) {
-    const mi = result.mediaInfo || {};
-    const failed = (mi.requests || []).find((q) => q.status === 4 && !q.is4k);
-    return {
-      tmdbId: result.id,
-      mediaType: result.mediaType,
-      status: mi.status || 1,
-      status4k: mi.status4k || 1,
-      failedId: failed ? failed.id : null,
-    };
-  }
-
   async function detailFlow(adapter) {
     const url = hrefNow();
     const extracted = safeExtract(adapter, url, document);
@@ -921,6 +941,13 @@
     const rerender = (lookup) => renderButton(container, buttonState(lookup), handlers);
     let result = null;
 
+    // Re-render as amber "Requested"; a known request id makes that state a
+    // click-to-cancel button (buttonState adds cancelId from requests[]).
+    const showRequested = (requestId) => {
+      const requests = requestId ? [{ id: requestId, status: 1, is4k: false }] : [];
+      rerender({ configured: true, result: { ...result, mediaInfo: { status: 2, requests } } });
+    };
+
     const handlers = {
       async primary(state) {
         if (state.state === 'setup') return showSettings();
@@ -929,22 +956,39 @@
             await client().retry(state.requestId);
             statusCache.invalidate(key);
             toast('Retry sent');
-            rerender({ configured: true, result: { ...result, mediaInfo: { status: 3 } } });
+            showRequested(state.requestId);
           } catch (e) {
             toastError(e);
+          }
+          return;
+        }
+        if (state.state === 'requested' && state.cancelId) {
+          try {
+            await client().cancel(state.cancelId);
+            statusCache.invalidate(key);
+            toast('Request canceled');
+            rerender({ configured: true, result: { ...result, mediaInfo: { status: 1 } } });
+          } catch (e) {
+            if (e.kind === 'notfound') {
+              // Already gone in Seerr: same end state as a successful cancel.
+              statusCache.invalidate(key);
+              rerender({ configured: true, result: { ...result, mediaInfo: { status: 1 } } });
+            } else {
+              toastError(e);
+            }
           }
           return;
         }
         if (state.state !== 'request' || !result) return;
         if (result.mediaType === 'movie') {
           try {
-            await client().request({ mediaType: 'movie', mediaId: result.id });
+            const resp = await client().request({ mediaType: 'movie', mediaId: result.id });
             statusCache.invalidate(key);
             toast('Requested ' + (result.title || 'movie'));
-            rerender({ configured: true, result: { ...result, mediaInfo: { status: 2 } } });
+            showRequested(resp && resp.id);
           } catch (e) {
             if (e.kind === 'duplicate') {
-              rerender({ configured: true, result: { ...result, mediaInfo: { status: 2 } } });
+              showRequested(null);
             } else {
               toastError(e);
             }
@@ -960,7 +1004,7 @@
       },
     };
 
-    const done = (body, wasDuplicate) => {
+    const done = (body, wasDuplicate, resp) => {
       statusCache.invalidate(key);
       if (!wasDuplicate) {
         toast(
@@ -969,7 +1013,7 @@
             : 'Requested'
         );
       }
-      rerender({ configured: true, result: { ...result, mediaInfo: { status: 2 } } });
+      showRequested(resp && resp.id);
     };
 
     async function openTvPanel(rect) {
@@ -996,10 +1040,10 @@
 
   const BADGE_STYLES = {
     available: { bg: '#16a34a', label: 'In Plex', click: false },
-    requested: { bg: '#d97706', label: 'Requested', click: false },
+    requested: { bg: '#d97706', label: 'Requested', click: false }, // clickable when cancelId known
     failed:    { bg: '#dc2626', label: 'Retry', click: true },
     request:   { bg: '#2563eb', label: 'Request', click: true },
-    busy:      { bg: '#6b7280', label: 'Requesting…', click: false },
+    busy:      { bg: '#6b7280', label: '…', click: false },
   };
   const seenCards = new WeakSet();
   const lookupQueue = [];
@@ -1008,48 +1052,69 @@
 
   function paintBadge(badge, state) {
     const s = BADGE_STYLES[state];
+    // 'requested' is an undo button only when we know the request id.
+    const clickable = state === 'requested' ? Boolean(badge.__entry && badge.__entry.cancelId) : s.click;
     badge.__state = state;
-    badge.textContent = s.label;
+    badge.textContent =
+      state === 'request' && badge.__entry
+        ? badge.__entry.mediaType === 'tv'
+          ? 'Request show'
+          : 'Request movie'
+        : s.label;
     badge.style.background = s.bg;
-    badge.style.pointerEvents = s.click ? 'auto' : 'none';
-    badge.style.cursor = s.click ? 'pointer' : 'default';
-    badge.title = s.click ? 'Click to ' + s.label.toLowerCase() + ' in Seerr' : s.label;
+    badge.style.pointerEvents = clickable ? 'auto' : 'none';
+    badge.style.cursor = clickable ? 'pointer' : 'default';
+    badge.title =
+      state === 'requested' && clickable
+        ? 'Requested — click to cancel'
+        : clickable
+          ? 'Click to ' + s.label.toLowerCase() + ' in Seerr'
+          : s.label;
   }
 
   // One-click request straight from the list badge: movies fire immediately,
-  // TV auto-requests all missing seasons (the season panel's default). The
-  // detail page remains the place for season/profile fine-tuning.
+  // TV auto-requests all missing seasons (the season panel's default). A
+  // second click on the resulting "Requested" badge cancels the request.
   async function badgeAction(badge) {
     const prev = badge.__state;
-    if (prev !== 'request' && prev !== 'failed') return;
+    if (prev !== 'request' && prev !== 'failed' && prev !== 'requested') return;
     const entry = badge.__entry;
-    paintBadge(badge, 'busy');
-    const markRequested = () => {
-      const updated = { ...entry, status: 2, failedId: null };
+    const paintEntry = (updated, state) => {
       statusCache.set(badge.__query, updated);
       badge.__entry = updated;
-      paintBadge(badge, 'requested');
+      paintBadge(badge, state);
     };
+    const markRequested = (resp) =>
+      paintEntry({ ...entry, status: 2, failedId: null, cancelId: resp && resp.id ? resp.id : null }, 'requested');
+    const markCanceled = () => paintEntry({ ...entry, status: 1, failedId: null, cancelId: null }, 'request');
+    paintBadge(badge, 'busy');
+    badge.textContent = prev === 'requested' ? 'Canceling…' : 'Requesting…';
     try {
-      if (prev === 'failed') {
-        await client().retry(entry.failedId);
-        markRequested();
+      if (prev === 'requested') {
+        await client().cancel(entry.cancelId);
+        markCanceled();
+        toast('Request canceled');
+      } else if (prev === 'failed') {
+        const resp = await client().retry(entry.failedId);
+        markRequested(resp);
         toast('Retry sent');
       } else if (entry.mediaType === 'tv') {
         const tv = await client().details('tv', entry.tmdbId);
         const seasons = seasonDefaults(tv).filter((s) => s.checked).map((s) => s.n);
         if (!seasons.length) throw clientError('noseasons');
-        await client().request({ mediaType: 'tv', mediaId: entry.tmdbId, seasons });
-        markRequested();
+        const resp = await client().request({ mediaType: 'tv', mediaId: entry.tmdbId, seasons });
+        markRequested(resp);
         toast('Requested ' + seasons.length + ' season' + (seasons.length === 1 ? '' : 's'));
       } else {
-        await client().request({ mediaType: 'movie', mediaId: entry.tmdbId });
-        markRequested();
+        const resp = await client().request({ mediaType: 'movie', mediaId: entry.tmdbId });
+        markRequested(resp);
         toast('Requested');
       }
     } catch (e) {
       if (e.kind === 'duplicate') {
-        markRequested();
+        markRequested(null);
+      } else if (e.kind === 'notfound' && prev === 'requested') {
+        markCanceled(); // request already gone in Seerr: same end state
       } else {
         toastError(e);
         paintBadge(badge, prev); // restore so it stays actionable

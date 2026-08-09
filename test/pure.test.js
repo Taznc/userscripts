@@ -115,6 +115,65 @@ test('buttonState: absent/UNKNOWN/DELETED -> request', () => {
   }
 });
 
+test('buttonState: requested with open request id -> active cancel', () => {
+  const b = S.buttonState({
+    configured: true,
+    result: {
+      mediaType: 'movie',
+      mediaInfo: { status: 2, requests: [{ id: 55, status: 1, is4k: false }] },
+    },
+  });
+  assert.equal(b.state, 'requested');
+  assert.equal(b.active, true);
+  assert.equal(b.cancelId, 55);
+});
+
+test('buttonState: requested without requests[] stays disabled', () => {
+  const b = S.buttonState({
+    configured: true,
+    result: { mediaType: 'movie', mediaInfo: { status: 2 } },
+  });
+  assert.equal(b.state, 'requested');
+  assert.equal(b.active, false);
+  assert.equal(b.cancelId, undefined);
+});
+
+test('buttonState: request label names the media type', () => {
+  const movie = S.buttonState({ configured: true, result: { mediaType: 'movie' } });
+  assert.equal(movie.label, 'Request movie');
+  const tv = S.buttonState({ configured: true, result: { mediaType: 'tv', mediaInfo: { status: 4 } } });
+  assert.equal(tv.label, 'Request show');
+});
+
+test('cacheEntryFrom: extracts failedId and cancelId, skips 4k requests', () => {
+  const entry = S.cacheEntryFrom({
+    id: 278,
+    mediaType: 'movie',
+    mediaInfo: {
+      status: 3,
+      requests: [
+        { id: 9, status: 2, is4k: true },
+        { id: 12, status: 4, is4k: false },
+        { id: 15, status: 1, is4k: false },
+      ],
+    },
+  });
+  assert.equal(entry.failedId, 12);
+  assert.equal(entry.cancelId, 15);
+  assert.equal(entry.tmdbId, 278);
+});
+
+test('client: cancel issues DELETE, 204 succeeds, 404 -> notfound', async () => {
+  const t = fakeTransport([['/api/v1/request/55', { status: 204, json: null }]]);
+  const c1 = S.makeClient({ cfg, transport: t });
+  await c1.cancel(55);
+  assert.equal(t.calls[0].method, 'DELETE');
+  assert.ok(t.calls[0].url.endsWith('/api/v1/request/55'));
+  const t2 = fakeTransport([['/api/v1/request/55', { status: 404, json: {} }]]);
+  const c2 = S.makeClient({ cfg, transport: t2 });
+  await assert.rejects(() => c2.cancel(55), (e) => e.kind === 'notfound');
+});
+
 test('dotStateFor: failed beats everything, request for absent/partial-tv', () => {
   assert.equal(S.dotStateFor({ failedId: 7, status: 3 }), 'failed');
   assert.equal(S.dotStateFor({ status: 5 }), 'available');

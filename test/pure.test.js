@@ -242,6 +242,16 @@ test('client: partial tv with an open season stays requestable', async () => {
   assert.equal(S.buttonState({ configured: true, result: r }).state, 'request');
 });
 
+test('shouldHideCard: hides only owned states, only when toggled on', () => {
+  assert.equal(S.shouldHideCard('available', true), true);
+  assert.equal(S.shouldHideCard('requested', true), true);
+  assert.equal(S.shouldHideCard('request', true), false);
+  assert.equal(S.shouldHideCard('failed', true), false);
+  assert.equal(S.shouldHideCard('busy', true), false);
+  assert.equal(S.shouldHideCard('available', false), false);
+  assert.equal(S.shouldHideCard('requested', false), false);
+});
+
 test('dotStateFor: exhausted partial tv -> requested (cancellable) or available', () => {
   assert.equal(S.dotStateFor({ status: 4, mediaType: 'tv', seasonsExhausted: true, cancelId: 77 }), 'requested');
   assert.equal(S.dotStateFor({ status: 4, mediaType: 'tv', seasonsExhausted: true }), 'available');

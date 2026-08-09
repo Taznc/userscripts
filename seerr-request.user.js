@@ -162,6 +162,12 @@
     return 'request';
   }
 
+  // Hide-owned toggle: which badge states disappear from list pages when
+  // the user turns on hiding. Actionable states always stay visible.
+  function shouldHideCard(state, hideOwned) {
+    return Boolean(hideOwned) && (state === 'available' || state === 'requested');
+  }
+
   // First movie/tv result, honoring an optional media-type hint. The hint
   // matters for tmdb: queries — id 278 can be both a movie and a tv show.
   // Person results are always skipped. No fuzzy matching, ever.
@@ -453,6 +459,7 @@
       pickResult,
       dotStateFor,
       cacheEntryFrom,
+      shouldHideCard,
       adapters,
       safeExtract,
       safeCards,
@@ -1065,6 +1072,56 @@
     request:   { bg: '#2563eb', label: 'Request', click: true },
     busy:      { bg: '#6b7280', label: '…', click: false },
   };
+  let hideOwned = Boolean(GM_getValue('seerr_hide_owned', false));
+
+  // Show/hide one card per the current toggle. Original inline display is
+  // preserved so unhiding restores exactly what the site had.
+  function applyCardVisibility(badge) {
+    const card = badge.__card;
+    if (!card) return;
+    if (shouldHideCard(badge.__state, hideOwned)) {
+      if (card.style.display !== 'none') {
+        card.__seerrDisplay = card.style.display;
+        card.style.display = 'none';
+      }
+    } else if (card.style.display === 'none' && '__seerrDisplay' in card) {
+      card.style.display = card.__seerrDisplay;
+    }
+  }
+
+  let hidePill = null;
+  function updateHidePill() {
+    if (!hidePill) return;
+    hidePill.textContent = hideOwned ? 'Owned: hidden' : 'Owned: shown';
+    hidePill.style.background = hideOwned ? '#2563eb' : '#374151';
+  }
+
+  function ensureHidePill() {
+    if (hidePill && hidePill.getRootNode().host.isConnected) return;
+    const { host, root } = makeShadowHost('div', 'hidepill');
+    Object.assign(host.style, { position: 'fixed', bottom: '16px', right: '16px', zIndex: 2147483646 });
+    hidePill = document.createElement('button');
+    hidePill.style.cssText =
+      'border:none;border-radius:999px;padding:6px 14px;font:600 12px/1.5 system-ui,-apple-system,sans-serif;' +
+      'color:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3);';
+    hidePill.title = 'Toggle hiding items already in Plex or requested';
+    hidePill.onclick = () => {
+      hideOwned = !hideOwned;
+      GM_setValue('seerr_hide_owned', hideOwned);
+      updateHidePill();
+      for (const badge of document.querySelectorAll('[data-seerr-id="dot"]')) applyCardVisibility(badge);
+    };
+    root.appendChild(hidePill);
+    document.body.appendChild(host);
+    updateHidePill();
+  }
+
+  function removeHidePill() {
+    const host = document.querySelector('[data-seerr-id="hidepill"]');
+    if (host) host.remove();
+    hidePill = null;
+  }
+
   const seenCards = new WeakSet();
   const lookupQueue = [];
   let inFlight = 0;
@@ -1090,6 +1147,7 @@
         : clickable
           ? 'Click to ' + s.label.toLowerCase() + ' in Seerr'
           : s.label;
+    applyCardVisibility(badge);
   }
 
   // One-click request straight from the list badge: movies fire immediately,
@@ -1164,6 +1222,7 @@
         e.stopPropagation();
         badgeAction(badge);
       });
+      badge.__card = el;
       el.appendChild(badge);
     }
     badge.__entry = entry;
@@ -1217,6 +1276,7 @@
 
   function listFlow(adapter) {
     if (!isConfigured(getCfg())) return;
+    ensureHidePill();
     for (const card of safeCards(adapter, document)) {
       if (seenCards.has(card.el)) continue;
       seenCards.add(card.el);
@@ -1236,6 +1296,7 @@
     const href = hrefNow();
     for (const adapter of adapters) {
       if (adapter.detail && adapter.detail.match.test(href)) {
+        removeHidePill(); // the toggle belongs to list pages only
         detailFlow(adapter);
         return; // detail pages don't get list dots
       }
@@ -1246,6 +1307,7 @@
         return;
       }
     }
+    removeHidePill();
     currentDetailKey = null;
   }
 

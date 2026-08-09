@@ -1,0 +1,143 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Seerr userscript harness</title>
+<style>
+  body { font-family: system-ui; margin: 0; background: #1f2937; color: #e5e7eb; }
+  header { padding: 10px 16px; background: #111827; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  header a { color: #93c5fd; font-size: 13px; }
+  main { max-width: 800px; margin: 24px auto; background: #111827; padding: 24px; border-radius: 8px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  .meta { color: #9ca3af; font-size: 14px; margin-bottom: 12px; }
+  #log { max-width: 800px; margin: 16px auto; font: 12px/1.6 monospace; color: #9ca3af; white-space: pre-wrap; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; max-width: 800px; margin: 16px auto; }
+  .card { background: #111827; border-radius: 8px; padding: 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  Case:
+  <a href="?case=movie">movie</a>
+  <a href="?case=tv">tv (partial)</a>
+  <a href="?case=tv-exhausted">tv (exhausted)</a>
+  <a href="?case=available">available</a>
+  <a href="?case=pending-failed">failed request</a>
+  <a href="?case=episode">imdb episode</a>
+  <a href="?case=offline">offline</a>
+  <a href="?case=unconfigured">unconfigured</a>
+  <a href="?case=list">list dots</a>
+</header>
+<div id="stage"></div>
+<div id="log"></div>
+
+<script>
+// ---- GM_* stubs (must precede the userscript) ----------------------
+const logEl = document.getElementById('log');
+const log = (...a) => { logEl.textContent += a.join(' ') + '\n'; };
+const gmStore = {};
+const CASE = new URLSearchParams(location.search).get('case') || 'movie';
+
+window.GM_getValue = (k, d) => (k in gmStore ? gmStore[k] : d);
+window.GM_setValue = (k, v) => { gmStore[k] = v; };
+window.GM_registerMenuCommand = (name) => log('[gm] menu command registered:', name);
+
+if (CASE !== 'unconfigured') {
+  gmStore.seerr_cfg = { url: 'https://seerr.test', key: 'test-key', userId: 3 };
+  gmStore.seerr_profiles = { ts: Date.now(),
+    radarr: [{ server: { id: 0, name: 'Radarr', is4k: false, isDefault: true },
+               profiles: [{ id: 1, name: 'Any' }, { id: 6, name: 'HD - 720p/1080p' }, { id: 8, name: 'Requested Movie' }],
+               rootFolders: [{ path: '/Media/Movies' }] }],
+    sonarr: [{ server: { id: 0, name: 'Sonarr', is4k: false, isDefault: true },
+               profiles: [{ id: 7, name: 'Requested TV' }],
+               rootFolders: [{ path: '/Media/TV Shows' }] }] };
+}
+
+// ---- canned Seerr backend -----------------------------------------
+const shawshank = { id: 278, mediaType: 'movie', title: 'The Shawshank Redemption' };
+const bb = { id: 1396, mediaType: 'tv', name: 'Breaking Bad' };
+const CASES = {
+  movie:            { search: { results: [{ ...shawshank, mediaInfo: { status: 1 } }] } },
+  tv:               { search: { results: [{ ...bb, mediaInfo: { status: 4 } }] } },
+  'tv-exhausted':   { search: { results: [{ ...bb, mediaInfo: { status: 4 } }] },
+                      tvDetails: {
+                        mediaInfo: { status: 4,
+                          seasons: [{ seasonNumber: 1, status: 5 }, { seasonNumber: 2, status: 5 }, { seasonNumber: 3, status: 3 }],
+                          requests: [{ id: 77, status: 2, is4k: false }] },
+                        seasons: [1, 2, 3].map(n => ({ seasonNumber: n, episodeCount: 10 })),
+                      } },
+  episode:          { search: { results: [{ ...bb, mediaInfo: { status: 1 } }] } },
+  available:        { search: { results: [{ ...shawshank, mediaInfo: { status: 5 } }] } },
+  'pending-failed': { search: { results: [{ ...shawshank, mediaInfo: { status: 3 } }] },
+                      movieDetails: { mediaInfo: { status: 3, requests: [{ id: 412, status: 4, is4k: false }] } } },
+  offline:          {},
+  unconfigured:     {},
+  list:             { perQuery: {
+                        tt0001: { results: [{ ...shawshank, mediaInfo: { status: 5 } }] },
+                        tt0002: { results: [{ ...shawshank, mediaInfo: { status: 1 } }] },
+                        tt0003: { results: [{ ...shawshank, mediaInfo: { status: 3 } }] },
+                        tt0004: { results: [{ ...bb, mediaInfo: { status: 1 } }] },
+                      },
+                      movieDetails: { mediaInfo: { status: 3, requests: [] } } },
+};
+
+window.GM_xmlhttpRequest = (opts) => {
+  const respond = (status, json) => {
+    log('[api]', opts.method, opts.url.replace('https://seerr.test', ''), '->', status);
+    setTimeout(() => opts.onload({ status, responseText: JSON.stringify(json) }), 150);
+  };
+  if (CASE === 'offline') { log('[api]', opts.method, opts.url, '-> network error'); return setTimeout(opts.onerror, 150); }
+  const c = CASES[CASE];
+  if (opts.url.includes('/api/v1/search')) {
+    if (c.perQuery) {
+      const tt = (opts.url.match(/tt\d+/) || [])[0];
+      return respond(200, c.perQuery[tt] || { results: [{ ...shawshank, mediaInfo: { status: 1 } }] });
+    }
+    return respond(200, c.search || { results: [] });
+  }
+  if (opts.url.includes('/api/v1/tv/1396')) return respond(200, c.tvDetails || {
+    mediaInfo: { status: 4, seasons: [{ seasonNumber: 1, status: 5 }, { seasonNumber: 2, status: 5 }] },
+    seasons: [0, 1, 2, 3, 4, 5].map(n => ({ seasonNumber: n, episodeCount: n === 0 ? 4 : 10 })),
+  });
+  if (opts.url.includes('/api/v1/movie/278')) return respond(200, c.movieDetails || { mediaInfo: { status: 1 } });
+  if (opts.url.includes('/retry')) return respond(200, { id: 412, status: 2 });
+  if (opts.method === 'DELETE' && opts.url.includes('/api/v1/request/')) return respond(204, {});
+  if (opts.url.includes('/api/v1/request')) { log('[api] POST body:', opts.data); return respond(201, { id: 999 }); }
+  return respond(404, {});
+};
+
+// ---- simulated page DOM -------------------------------------------
+const stage = document.getElementById('stage');
+if (CASE === 'list') {
+  window.__seerrHrefOverride =
+    new URLSearchParams(location.search).get('url') || 'https://www.imdb.com/search/title/?genres=drama';
+  stage.innerHTML = '<div class="grid">' + [1, 2, 3, 4].map(i =>
+    '<li class="card ipc-metadata-list-summary-item"><a href="/title/tt000' + i + '/?ref_=sr">Film ' + i + '</a></li>'
+  ).join('') + '</div>';
+} else {
+  const isTv = CASE === 'tv';
+  const isEp = CASE === 'episode';
+  window.__seerrHrefOverride = 'https://www.imdb.com/title/' + (isEp ? 'tt1054724' : isTv ? 'tt0903747' : 'tt0111161') + '/';
+  const ld = isEp
+    ? { '@type': 'TVEpisode', partOfSeries: { url: 'https://www.imdb.com/title/tt0903747/' } }
+    : { '@type': isTv ? 'TVSeries' : 'Movie' };
+  const carousel = new URLSearchParams(location.search).get('carousel')
+    ? '<div class="grid">' +
+      '<li class="card ipc-poster-card"><a href="/title/tt0111161/?ref_=tt_sims">Self (skip)</a></li>' +
+      '<li class="card ipc-poster-card"><a href="/title/tt0068646/?ref_=tt_sims">Similar 1</a></li>' +
+      '<li class="card ipc-poster-card"><a href="/title/tt0071562/?ref_=tt_sims">Similar 2</a></li>' +
+      '</div>'
+    : '';
+  stage.innerHTML = '<main><h1 data-testid="hero__pageTitle">' +
+    (isTv || isEp ? 'Breaking Bad' : 'The Shawshank Redemption') +
+    '</h1><p class="meta">Simulated IMDb page — case: ' + CASE + '</p></main>' + carousel;
+  const s = document.createElement('script');
+  s.type = 'application/ld+json';
+  s.textContent = JSON.stringify(ld);
+  document.head.appendChild(s);
+}
+log('[harness] case:', CASE, '| simulated url:', window.__seerrHrefOverride);
+</script>
+<script src="../seerr-request.user.js"></script>
+</body>
+</html>

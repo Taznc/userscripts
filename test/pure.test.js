@@ -174,6 +174,80 @@ test('client: cancel issues DELETE, 204 succeeds, 404 -> notfound', async () => 
   await assert.rejects(() => c2.cancel(55), (e) => e.kind === 'notfound');
 });
 
+test('buttonState: partial tv with exhausted seasons -> requested/available, never request (silo case)', () => {
+  const withOpen = S.buttonState({
+    configured: true,
+    result: {
+      mediaType: 'tv',
+      seasonsExhausted: true,
+      mediaInfo: { status: 4, requests: [{ id: 77, status: 2, is4k: false }] },
+    },
+  });
+  assert.equal(withOpen.state, 'requested');
+  assert.equal(withOpen.active, true);
+  assert.equal(withOpen.cancelId, 77);
+  const withoutOpen = S.buttonState({
+    configured: true,
+    result: { mediaType: 'tv', seasonsExhausted: true, mediaInfo: { status: 4 } },
+  });
+  assert.equal(withoutOpen.state, 'available');
+});
+
+test('client: resolve fetches details for partial tv and computes exhaustion', async () => {
+  const t = fakeTransport([
+    ['/api/v1/search', {
+      status: 200,
+      json: { results: [{ id: 125988, mediaType: 'tv', mediaInfo: { status: 4 } }] },
+    }],
+    ['/api/v1/tv/125988', {
+      status: 200,
+      json: {
+        mediaInfo: {
+          status: 4,
+          seasons: [
+            { seasonNumber: 1, status: 5 },
+            { seasonNumber: 2, status: 5 },
+            { seasonNumber: 3, status: 3 },
+          ],
+          requests: [{ id: 77, status: 2, is4k: false }],
+        },
+        seasons: [1, 2, 3].map((n) => ({ seasonNumber: n, episodeCount: 10 })),
+      },
+    }],
+  ]);
+  const client = S.makeClient({ cfg, transport: t });
+  const r = await client.resolve('imdb:tt14688458');
+  assert.equal(t.calls.length, 2, 'details fetched for partial tv');
+  assert.equal(r.seasonsExhausted, true);
+  assert.equal(S.buttonState({ configured: true, result: r }).state, 'requested');
+});
+
+test('client: partial tv with an open season stays requestable', async () => {
+  const t = fakeTransport([
+    ['/api/v1/search', {
+      status: 200,
+      json: { results: [{ id: 1396, mediaType: 'tv', mediaInfo: { status: 4 } }] },
+    }],
+    ['/api/v1/tv/1396', {
+      status: 200,
+      json: {
+        mediaInfo: { status: 4, seasons: [{ seasonNumber: 1, status: 5 }] },
+        seasons: [1, 2].map((n) => ({ seasonNumber: n, episodeCount: 10 })),
+      },
+    }],
+  ]);
+  const client = S.makeClient({ cfg, transport: t });
+  const r = await client.resolve('tmdb:1396', 'tv');
+  assert.equal(r.seasonsExhausted, false);
+  assert.equal(S.buttonState({ configured: true, result: r }).state, 'request');
+});
+
+test('dotStateFor: exhausted partial tv -> requested (cancellable) or available', () => {
+  assert.equal(S.dotStateFor({ status: 4, mediaType: 'tv', seasonsExhausted: true, cancelId: 77 }), 'requested');
+  assert.equal(S.dotStateFor({ status: 4, mediaType: 'tv', seasonsExhausted: true }), 'available');
+  assert.equal(S.dotStateFor({ status: 4, mediaType: 'tv', seasonsExhausted: false }), 'request');
+});
+
 test('dotStateFor: failed beats everything, request for absent/partial-tv', () => {
   assert.equal(S.dotStateFor({ failedId: 7, status: 3 }), 'failed');
   assert.equal(S.dotStateFor({ status: 5 }), 'available');

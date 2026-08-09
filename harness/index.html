@@ -20,6 +20,7 @@
   Case:
   <a href="?case=movie">movie</a>
   <a href="?case=tv">tv (partial)</a>
+  <a href="?case=tv-exhausted">tv (exhausted)</a>
   <a href="?case=available">available</a>
   <a href="?case=pending-failed">failed request</a>
   <a href="?case=episode">imdb episode</a>
@@ -58,6 +59,13 @@ const bb = { id: 1396, mediaType: 'tv', name: 'Breaking Bad' };
 const CASES = {
   movie:            { search: { results: [{ ...shawshank, mediaInfo: { status: 1 } }] } },
   tv:               { search: { results: [{ ...bb, mediaInfo: { status: 4 } }] } },
+  'tv-exhausted':   { search: { results: [{ ...bb, mediaInfo: { status: 4 } }] },
+                      tvDetails: {
+                        mediaInfo: { status: 4,
+                          seasons: [{ seasonNumber: 1, status: 5 }, { seasonNumber: 2, status: 5 }, { seasonNumber: 3, status: 3 }],
+                          requests: [{ id: 77, status: 2, is4k: false }] },
+                        seasons: [1, 2, 3].map(n => ({ seasonNumber: n, episodeCount: 10 })),
+                      } },
   episode:          { search: { results: [{ ...bb, mediaInfo: { status: 1 } }] } },
   available:        { search: { results: [{ ...shawshank, mediaInfo: { status: 5 } }] } },
   'pending-failed': { search: { results: [{ ...shawshank, mediaInfo: { status: 3 } }] },
@@ -87,7 +95,7 @@ window.GM_xmlhttpRequest = (opts) => {
     }
     return respond(200, c.search || { results: [] });
   }
-  if (opts.url.includes('/api/v1/tv/1396')) return respond(200, {
+  if (opts.url.includes('/api/v1/tv/1396')) return respond(200, c.tvDetails || {
     mediaInfo: { status: 4, seasons: [{ seasonNumber: 1, status: 5 }, { seasonNumber: 2, status: 5 }] },
     seasons: [0, 1, 2, 3, 4, 5].map(n => ({ seasonNumber: n, episodeCount: n === 0 ? 4 : 10 })),
   });

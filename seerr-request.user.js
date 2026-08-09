@@ -58,9 +58,16 @@
     const requestLabel =
       r.mediaType === 'tv' ? 'Request show' : r.mediaType === 'movie' ? 'Request movie' : 'Request in Seerr';
     if (st === 4) {
-      return r.mediaType === 'tv'
-        ? { state: 'request', label: requestLabel, active: true }
-        : { state: 'available', label: 'In Plex', active: false };
+      if (r.mediaType !== 'tv') return { state: 'available', label: 'In Plex', active: false };
+      if (r.seasonsExhausted) {
+        // Nothing left to request: the truthful states are "Requested"
+        // (cancellable when the open request id is known) or "In Plex".
+        const open = (mi.requests || []).find((q) => !q.is4k && (q.status === 1 || q.status === 2));
+        return open
+          ? { state: 'requested', label: 'Requested', active: true, cancelId: open.id }
+          : { state: 'available', label: 'In Plex', active: false };
+      }
+      return { state: 'request', label: requestLabel, active: true };
     }
     return { state: 'request', label: requestLabel, active: true };
   }
@@ -137,6 +144,7 @@
       status4k: mi.status4k || 1,
       failedId: failed ? failed.id : null,
       cancelId: open ? open.id : null,
+      seasonsExhausted: Boolean(result.seasonsExhausted),
     };
   }
 
@@ -145,7 +153,11 @@
   function dotStateFor(entry) {
     if (entry.failedId) return 'failed';
     if (entry.status === 5) return 'available';
-    if (entry.status === 4) return entry.mediaType === 'tv' ? 'request' : 'available';
+    if (entry.status === 4) {
+      if (entry.mediaType !== 'tv') return 'available';
+      if (entry.seasonsExhausted) return entry.cancelId ? 'requested' : 'available';
+      return 'request';
+    }
     if (entry.status === 2 || entry.status === 3) return 'requested';
     return 'request';
   }
@@ -199,15 +211,23 @@
         const json = await call('GET', '/api/v1/search?query=' + encodeURIComponent(query));
         const r = pickResult(json && json.results, hint);
         if (!r) return null;
-        // A FAILED request hides behind media status 2/3; only then is a
-        // second call needed to see requests[].
+        // A FAILED request hides behind media status 2/3, and a partially-
+        // available TV show may have every remaining season already
+        // requested — both need the details call to tell the truth.
         const st = r.mediaInfo && r.mediaInfo.status;
-        if (st === 2 || st === 3) {
+        const needsDetails = st === 2 || st === 3 || (st === 4 && r.mediaType === 'tv');
+        if (needsDetails) {
           try {
             const d = await details(r.mediaType, r.id);
             if (d && d.mediaInfo) r.mediaInfo = d.mediaInfo;
+            if (r.mediaType === 'tv') {
+              const defs = seasonDefaults(d);
+              // Every aired season is in Plex or already requested: there is
+              // nothing an active Request button could do.
+              r.seasonsExhausted = defs.length > 0 && defs.every((s) => s.disabled);
+            }
           } catch (e) {
-            // Status stays "requested" — strictly less wrong than failing the lookup.
+            // Status stays as searched — strictly less wrong than failing the lookup.
           }
         }
         return r;
@@ -1115,6 +1135,10 @@
         markRequested(null);
       } else if (e.kind === 'notfound' && prev === 'requested') {
         markCanceled(); // request already gone in Seerr: same end state
+      } else if (e.kind === 'noseasons') {
+        // Nothing requestable after all (stale cache): correct the badge.
+        paintEntry({ ...entry, seasonsExhausted: true }, entry.cancelId ? 'requested' : 'available');
+        toast('All seasons already in Plex or requested');
       } else {
         toastError(e);
         paintBadge(badge, prev); // restore so it stays actionable

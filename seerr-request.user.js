@@ -114,6 +114,16 @@
     };
   }
 
+  // List-badge state from a cache entry. Requestable items get an actionable
+  // 'request' badge (one-click from the list); failed gets 'retry-able'.
+  function dotStateFor(entry) {
+    if (entry.failedId) return 'failed';
+    if (entry.status === 5) return 'available';
+    if (entry.status === 4) return entry.mediaType === 'tv' ? 'request' : 'available';
+    if (entry.status === 2 || entry.status === 3) return 'requested';
+    return 'request';
+  }
+
   // First movie/tv result, honoring an optional media-type hint. The hint
   // matters for tmdb: queries — id 278 can be both a movie and a tv show.
   // Person results are always skipped. No fuzzy matching, ever.
@@ -258,7 +268,7 @@
         },
       },
       list: {
-        match: /^https:\/\/(www\.)?imdb\.com\/(search|chart|list|india|user\/[^/]+\/(watchlist|ratings|lists))/,
+        match: /^https:\/\/(www\.)?imdb\.com\/(search|chart|list|india|what-to-watch|user\/[^/]+\/(watchlist|ratings|lists))/,
         cards(doc) {
           const seen = new Set();
           const out = [];
@@ -390,6 +400,7 @@
       makeCache,
       makeClient,
       pickResult,
+      dotStateFor,
       adapters,
       safeExtract,
       safeCards,
@@ -974,34 +985,92 @@
 
   // --- list dots -----------------------------------------------------
 
-  const DOT_COLORS = { available: '#16a34a', requested: '#d97706', failed: '#dc2626' };
+  const BADGE_STYLES = {
+    available: { bg: '#16a34a', label: 'In Plex', click: false },
+    requested: { bg: '#d97706', label: 'Requested', click: false },
+    failed:    { bg: '#dc2626', label: 'Retry', click: true },
+    request:   { bg: '#2563eb', label: 'Request', click: true },
+    busy:      { bg: '#6b7280', label: 'Requesting…', click: false },
+  };
   const seenCards = new WeakSet();
   const lookupQueue = [];
   let inFlight = 0;
   const MAX_CONCURRENT = 4;
 
-  function dotStateFor(entry) {
-    if (entry.failedId) return 'failed';
-    if (entry.status === 4 || entry.status === 5) return 'available';
-    if (entry.status === 2 || entry.status === 3) return 'requested';
-    return null; // not in library: no dot, by design
+  function paintBadge(badge, state) {
+    const s = BADGE_STYLES[state];
+    badge.__state = state;
+    badge.textContent = s.label;
+    badge.style.background = s.bg;
+    badge.style.pointerEvents = s.click ? 'auto' : 'none';
+    badge.style.cursor = s.click ? 'pointer' : 'default';
+    badge.title = s.click ? 'Click to ' + s.label.toLowerCase() + ' in Seerr' : s.label;
   }
 
-  function renderDot(el, state) {
-    if (!state || el.querySelector(':scope > [data-seerr-id="dot"]')) return;
-    const badge = document.createElement('span');
-    badge.setAttribute('data-seerr-id', 'dot');
-    const label = { available: 'In Plex', requested: 'Requested', failed: 'Failed' }[state];
-    badge.textContent = label;
-    badge.title = { available: 'In Plex', requested: 'Requested', failed: 'Request failed' }[state];
-    badge.style.cssText =
-      'position:absolute;top:6px;right:6px;z-index:10;display:inline-block;' +
-      'padding:2px 8px;border-radius:999px;font:600 11px/1.5 system-ui,-apple-system,sans-serif;' +
-      'color:#fff;background:' + DOT_COLORS[state] + ';box-shadow:0 1px 3px rgba(0,0,0,.35);' +
-      'pointer-events:none;white-space:nowrap;';
-    const cs = getComputedStyle(el);
-    if (cs.position === 'static') el.style.position = 'relative';
-    el.appendChild(badge);
+  // One-click request straight from the list badge: movies fire immediately,
+  // TV auto-requests all missing seasons (the season panel's default). The
+  // detail page remains the place for season/profile fine-tuning.
+  async function badgeAction(badge) {
+    const prev = badge.__state;
+    if (prev !== 'request' && prev !== 'failed') return;
+    const entry = badge.__entry;
+    paintBadge(badge, 'busy');
+    const markRequested = () => {
+      const updated = { ...entry, status: 2, failedId: null };
+      statusCache.set(badge.__query, updated);
+      badge.__entry = updated;
+      paintBadge(badge, 'requested');
+    };
+    try {
+      if (prev === 'failed') {
+        await client().retry(entry.failedId);
+        markRequested();
+        toast('Retry sent');
+      } else if (entry.mediaType === 'tv') {
+        const tv = await client().details('tv', entry.tmdbId);
+        const seasons = seasonDefaults(tv).filter((s) => s.checked).map((s) => s.n);
+        if (!seasons.length) throw clientError('noseasons');
+        await client().request({ mediaType: 'tv', mediaId: entry.tmdbId, seasons });
+        markRequested();
+        toast('Requested ' + seasons.length + ' season' + (seasons.length === 1 ? '' : 's'));
+      } else {
+        await client().request({ mediaType: 'movie', mediaId: entry.tmdbId });
+        markRequested();
+        toast('Requested');
+      }
+    } catch (e) {
+      if (e.kind === 'duplicate') {
+        markRequested();
+      } else {
+        toastError(e);
+        paintBadge(badge, prev); // restore so it stays actionable
+      }
+    }
+  }
+
+  function renderDot(el, entry, query) {
+    let badge = el.querySelector(':scope > [data-seerr-id="dot"]');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.setAttribute('data-seerr-id', 'dot');
+      badge.style.cssText =
+        'position:absolute;top:6px;right:6px;z-index:10;display:inline-block;' +
+        'padding:2px 8px;border-radius:999px;font:600 11px/1.5 system-ui,-apple-system,sans-serif;' +
+        'color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35);white-space:nowrap;';
+      const cs = getComputedStyle(el);
+      if (cs.position === 'static') el.style.position = 'relative';
+      // Card containers are usually wrapped in the title link: stop the
+      // badge click from also navigating to the title page.
+      badge.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        badgeAction(badge);
+      });
+      el.appendChild(badge);
+    }
+    badge.__entry = entry;
+    badge.__query = query;
+    paintBadge(badge, dotStateFor(entry));
   }
 
   function pumpQueue() {
@@ -1014,7 +1083,7 @@
           if (!r) return;
           const entry = cacheEntryFrom(r);
           statusCache.set(card.query, entry);
-          renderDot(card.el, dotStateFor(entry));
+          renderDot(card.el, entry, card.query);
         })
         .catch(() => {
           /* a dot is never worth a toast */
@@ -1034,7 +1103,7 @@
         const card = entry.target.__seerrCard;
         const cached = statusCache.get(card.query);
         if (cached) {
-          renderDot(card.el, dotStateFor(cached)); // cache hit: zero calls
+          renderDot(card.el, cached, card.query); // cache hit: zero calls
         } else {
           lookupQueue.push(card);
           pumpQueue();

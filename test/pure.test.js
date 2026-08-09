@@ -115,6 +115,17 @@ test('buttonState: absent/UNKNOWN/DELETED -> request', () => {
   }
 });
 
+test('dotStateFor: failed beats everything, request for absent/partial-tv', () => {
+  assert.equal(S.dotStateFor({ failedId: 7, status: 3 }), 'failed');
+  assert.equal(S.dotStateFor({ status: 5 }), 'available');
+  assert.equal(S.dotStateFor({ status: 4, mediaType: 'movie' }), 'available');
+  assert.equal(S.dotStateFor({ status: 4, mediaType: 'tv' }), 'request');
+  assert.equal(S.dotStateFor({ status: 2 }), 'requested');
+  assert.equal(S.dotStateFor({ status: 3 }), 'requested');
+  assert.equal(S.dotStateFor({ status: 1 }), 'request');
+  assert.equal(S.dotStateFor({ status: 6 }), 'request');
+});
+
 // ---------------------------------------------------------------- Task 3
 
 test('seasonDefaults: mixed availability (breaking bad case)', () => {

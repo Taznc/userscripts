@@ -37,10 +37,12 @@ on install.
 - **Green "In Plex" / amber "Requested"** — already handled; nothing to do.
 - **Red "Retry request"** — a previous request failed in Radarr/Sonarr;
   click to retry it.
-- **List pages** (IMDb search/charts/lists, TMDb, Trakt) — colored dots on
-  covers: green = in Plex, amber = requested, red = failed. No dot = not in
-  your library. Lookups run lazily as cards scroll into view (max 4
-  in-flight) and cache for an hour.
+- **List pages** (IMDb search/charts/lists/what-to-watch, TMDb, Trakt) —
+  labeled badges on covers: green **In Plex**, amber **Requested**, red
+  **Retry**, blue **Request**. The blue and red ones are clickable: movies
+  request in one click, TV auto-requests every season you're missing, red
+  retries the failed request. Lookups run lazily as cards scroll into view
+  (max 4 in-flight) and cache for an hour.
 - IMDb **episode** pages request the parent series.
 
 Letterboxd gets the button on film pages only — its poster grids don't

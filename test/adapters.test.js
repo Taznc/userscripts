@@ -73,6 +73,15 @@ test('imdb: malformed json-ld still yields URL tt', () => {
   assert.equal(out.query, 'imdb:tt0111161');
 });
 
+test('imdb: list match covers search, charts, lists, and what-to-watch', () => {
+  const m = byName.imdb.list.match;
+  assert.ok(m.test('https://www.imdb.com/search/title/?genres=drama'));
+  assert.ok(m.test('https://www.imdb.com/chart/top/'));
+  assert.ok(m.test('https://www.imdb.com/what-to-watch/popular/?ref_=watch_wls_tb'));
+  assert.ok(m.test('https://www.imdb.com/user/ur12345/watchlist'));
+  assert.ok(!m.test('https://www.imdb.com/title/tt0111161/'));
+});
+
 test('imdb: list cards dedupe by tt id', () => {
   const item = (tt, withContainer = true) =>
     el({

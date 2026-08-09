@@ -19,7 +19,7 @@ decision doesn't get re-litigated silently.
 | Excluded | Reason |
 |---|---|
 | Rotten Tomatoes support | Exposes no IMDb or TMDb ID; would require fuzzy title matching |
-| Click-to-request from list cards | Materially bigger build (per-card popups, TV seasons with no room for a panel); status view ships first |
+| ~~Click-to-request from list cards~~ | **Moved into scope 2026-08-08 at user request.** Badges are one-click: movies request immediately, TV auto-requests all missing seasons (no per-card popup); the detail page remains the place for season/profile fine-tuning |
 | Watchlist as a secondary action | Not requested; Overseerr's watchlist is Plex-synced and read-only, so support differs by flavor |
 | Auto-approve after request | Not requested; the approval step is a deliberate speed bump |
 | Keyboard shortcuts | Saves little over a button already on screen |

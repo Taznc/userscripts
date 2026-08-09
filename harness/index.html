@@ -64,7 +64,13 @@ const CASES = {
                       movieDetails: { mediaInfo: { status: 3, requests: [{ id: 412, status: 4, is4k: false }] } } },
   offline:          {},
   unconfigured:     {},
-  list:             { search: { results: [{ ...shawshank, mediaInfo: { status: 5 } }] } },
+  list:             { perQuery: {
+                        tt0001: { results: [{ ...shawshank, mediaInfo: { status: 5 } }] },
+                        tt0002: { results: [{ ...shawshank, mediaInfo: { status: 1 } }] },
+                        tt0003: { results: [{ ...shawshank, mediaInfo: { status: 3 } }] },
+                        tt0004: { results: [{ ...bb, mediaInfo: { status: 1 } }] },
+                      },
+                      movieDetails: { mediaInfo: { status: 3, requests: [] } } },
 };
 
 window.GM_xmlhttpRequest = (opts) => {
@@ -74,7 +80,13 @@ window.GM_xmlhttpRequest = (opts) => {
   };
   if (CASE === 'offline') { log('[api]', opts.method, opts.url, '-> network error'); return setTimeout(opts.onerror, 150); }
   const c = CASES[CASE];
-  if (opts.url.includes('/api/v1/search')) return respond(200, c.search || { results: [] });
+  if (opts.url.includes('/api/v1/search')) {
+    if (c.perQuery) {
+      const tt = (opts.url.match(/tt\d+/) || [])[0];
+      return respond(200, c.perQuery[tt] || { results: [] });
+    }
+    return respond(200, c.search || { results: [] });
+  }
   if (opts.url.includes('/api/v1/tv/1396')) return respond(200, {
     mediaInfo: { status: 4, seasons: [{ seasonNumber: 1, status: 5 }, { seasonNumber: 2, status: 5 }] },
     seasons: [0, 1, 2, 3, 4, 5].map(n => ({ seasonNumber: n, episodeCount: n === 0 ? 4 : 10 })),

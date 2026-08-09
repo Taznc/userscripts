@@ -872,7 +872,7 @@
   }
 
   async function detailFlow(adapter) {
-    const url = location.href;
+    const url = hrefNow();
     const extracted = safeExtract(adapter, url, document);
     if (!extracted) {
       currentDetailKey = null;
@@ -1052,9 +1052,13 @@
 
   // --- route ---------------------------------------------------------
 
+  // Test seam: a local harness page can simulate a site URL without
+  // Tampermonkey. Never set on real sites.
+  const hrefNow = () => window.__seerrHrefOverride || location.href;
+
   function route(force) {
     if (force) currentDetailKey = null;
-    const href = location.href;
+    const href = hrefNow();
     for (const adapter of adapters) {
       if (adapter.detail && adapter.detail.match.test(href)) {
         detailFlow(adapter);

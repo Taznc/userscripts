@@ -134,26 +134,44 @@ test('tmdb: movie and tv from URL, slug tolerated', () => {
 });
 
 // ---------------------------------------------------------------- trakt
+//
+// Trakt's 2026 SvelteKit rewrite removed all data-tmdb-id/themoviedb.org
+// markup. The only stable external id left on a detail page is the IMDb
+// rating badge's link — confirmed against live DOM (Silo, tt14688458).
+// No list-card fixtures here: real Trakt cards carry zero external ids.
 
-test('trakt: tmdb id from external link, type from URL segment', () => {
+test('trakt: imdb id from ratings-badge link, type from URL segment', () => {
   const doc = stubDoc({
-    'a[href*="themoviedb.org/"]': el({ href: 'https://www.themoviedb.org/movie/278' }),
+    'a[href*="imdb.com/title/tt"]': el({ href: 'https://www.imdb.com/title/tt0111161' }),
   });
   const out = byName.trakt.detail.extract('https://trakt.tv/movies/the-shawshank-redemption-1994', doc);
-  assert.deepEqual(out, { query: 'tmdb:278', mediaType: 'movie' });
+  assert.deepEqual(out, { query: 'imdb:tt0111161', mediaType: 'movie' });
 });
 
-test('trakt: shows map to tv', () => {
+test('trakt: shows map to tv (live Silo case, tt14688458)', () => {
   const doc = stubDoc({
-    'a[href*="themoviedb.org/"]': el({ href: 'https://www.themoviedb.org/tv/1396' }),
+    'a[href*="imdb.com/title/tt"]': el({ href: 'https://www.imdb.com/title/tt14688458' }),
   });
-  const out = byName.trakt.detail.extract('https://trakt.tv/shows/breaking-bad', doc);
-  assert.deepEqual(out, { query: 'tmdb:1396', mediaType: 'tv' });
+  const out = byName.trakt.detail.extract('https://trakt.tv/shows/silo', doc);
+  assert.deepEqual(out, { query: 'imdb:tt14688458', mediaType: 'tv' });
 });
 
-test('trakt: no tmdb link -> null', () => {
+test('trakt: no imdb link -> null (no fuzzy fallback, e.g. unreleased titles)', () => {
   const out = byName.trakt.detail.extract('https://trakt.tv/movies/x', stubDoc({}));
   assert.equal(out, null);
+});
+
+test('trakt: rotten tomatoes / justwatch links are ignored, not mistaken for an id source', () => {
+  const doc = stubDoc({
+    'a[href*="imdb.com/title/tt"]': null,
+  });
+  // Simulates a page with only RT/JustWatch links present, no IMDb link.
+  const out = byName.trakt.detail.extract('https://trakt.tv/shows/silo', doc);
+  assert.equal(out, null);
+});
+
+test('trakt: adapter carries no list capability (real cards have no external id)', () => {
+  assert.equal(byName.trakt.list, undefined);
 });
 
 // ---------------------------------------------------------------- containment

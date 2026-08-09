@@ -428,31 +428,31 @@
     },
     {
       name: 'trakt',
+      // Trakt shipped a full SvelteKit rewrite (2026) that dropped the old
+      // data-tmdb-id/themoviedb.org markup entirely — confirmed against
+      // live DOM. Detail pages still surface a stable external id: the
+      // IMDb rating badge in the summary header links to imdb.com/title/tt…
+      // even before any "expand ratings" interaction. List/grid cards
+      // (trending, watchlist, "Where to Watch") carry only an internal
+      // slug link and NO external id of any kind — so, per the no-fuzzy-
+      // matching rule, Trakt gets a detail-page button only.
       detail: {
         match: /^https:\/\/trakt\.tv\/(movies|shows)\/[^/]+/,
         extract(url, doc) {
           const seg = url.match(/trakt\.tv\/(movies|shows)\//);
           if (!seg) return null;
-          const link = doc.querySelector('a[href*="themoviedb.org/"]');
-          const m = link && (link.href || link.getAttribute('href') || '').match(/themoviedb\.org\/(?:movie|tv)\/(\d+)/);
-          if (!m) return null; // no TMDb link on page, no button
-          return { query: 'tmdb:' + m[1], mediaType: seg[1] === 'movies' ? 'movie' : 'tv' };
+          const link = doc.querySelector('a[href*="imdb.com/title/tt"]');
+          const m = link && (link.href || link.getAttribute('href') || '').match(/imdb\.com\/title\/(tt\d+)/);
+          if (!m) return null; // no IMDb link on page, no button
+          return { query: 'imdb:' + m[1], mediaType: seg[1] === 'movies' ? 'movie' : 'tv' };
         },
         anchor(doc) {
-          return doc.querySelector('.action-buttons') || doc.querySelector('h1');
-        },
-      },
-      list: {
-        match: /^https:\/\/trakt\.tv\/(users\/[^/]+\/(watchlist|lists)|movies|shows)\/?/,
-        cards(doc) {
-          const out = [];
-          for (const el of doc.querySelectorAll('[data-tmdb-id][data-type]')) {
-            const id = el.getAttribute('data-tmdb-id');
-            const type = el.getAttribute('data-type');
-            if (!id || (type !== 'movie' && type !== 'show')) continue;
-            out.push({ el, query: 'tmdb:' + id, mediaType: type === 'show' ? 'tv' : 'movie' });
-          }
-          return out;
+          return (
+            doc.querySelector('[data-testid="summary-media-title"]') ||
+            doc.querySelector('.trakt-summary-actions-bar') ||
+            doc.querySelector('.action-buttons') ||
+            doc.querySelector('h1')
+          );
         },
       },
     },

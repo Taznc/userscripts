@@ -39,13 +39,20 @@ on install.
   click to retry it.
 - **List pages** (every IMDb page — homepage carousels, search, charts,
   editorial lists, filmographies, even the "More like this" shelf on title
-  pages — plus TMDb and Trakt grids) —
+  pages — plus TMDb grids) —
   labeled badges on covers: green **In Plex**, amber **Requested**, red
   **Retry**, blue **Request**. The blue and red ones are clickable: movies
   request in one click, TV auto-requests every season you're missing, red
   retries the failed request. Lookups start ~1200px ahead of your scroll
   position (max 8 in-flight, on-screen cards first) and cache for an hour.
 - IMDb **episode** pages request the parent series.
+- **Trakt is detail-page only.** Trakt's 2026 SvelteKit rewrite removed
+  every external id (TMDb link, `data-tmdb-id`) from trending/watchlist/grid
+  cards — only the internal Trakt slug survives there, which Seerr can't
+  resolve without fuzzy title matching. This script never fuzzy-matches, so
+  Trakt grids show no badges. Detail pages still work: the IMDb rating
+  badge in the header links to `imdb.com/title/tt…`, which the script reads
+  the same way it reads IMDb itself.
 
 Letterboxd gets the button on film pages only — its poster grids don't
 expose a TMDb ID, and this script never guesses by title.

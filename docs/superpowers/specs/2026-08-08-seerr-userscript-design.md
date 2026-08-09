@@ -171,7 +171,7 @@ only that site its button. Other adapters are unaffected.
 | IMDb | `imdb.com/title/(tt\d+)` | URL path → `imdb:tt…` | search results, watchlist, user lists, charts |
 | Letterboxd | `letterboxd.com/film/…` | `body[data-tmdb-id]` or the TMDb sidebar link → `tmdb:…` | only if poster cards expose a resolvable ID |
 | TMDb | `themoviedb.org/(movie\|tv)/(\d+)` | URL path → `tmdb:…` | discover and search grids |
-| Trakt | `trakt.tv/(movies\|shows)/…` | TMDb ID from page meta → `tmdb:…` | lists, watchlist |
+| Trakt | `trakt.tv/(movies\|shows)/…` | ~~TMDb ID from page meta~~ **revised 2026-08-09**: Trakt's SvelteKit rewrite dropped all TMDb markup — IMDb rating-badge link → `imdb:tt…` | **none** — list/grid cards carry no external id post-rewrite; no-fuzzy-match rule leaves Trakt detail-page-only |
 
 **IMDb episode pages** share the `/title/tt…/` URL shape but resolve to zero
 results, since `tv_episode_results` is unmapped. The IMDb adapter detects the

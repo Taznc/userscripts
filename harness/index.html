@@ -109,7 +109,8 @@ window.GM_xmlhttpRequest = (opts) => {
 // ---- simulated page DOM -------------------------------------------
 const stage = document.getElementById('stage');
 if (CASE === 'list') {
-  window.__seerrHrefOverride = 'https://www.imdb.com/search/title/?genres=drama';
+  window.__seerrHrefOverride =
+    new URLSearchParams(location.search).get('url') || 'https://www.imdb.com/search/title/?genres=drama';
   stage.innerHTML = '<div class="grid">' + [1, 2, 3, 4].map(i =>
     '<li class="card ipc-metadata-list-summary-item"><a href="/title/tt000' + i + '/?ref_=sr">Film ' + i + '</a></li>'
   ).join('') + '</div>';

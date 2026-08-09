@@ -325,7 +325,7 @@
         },
       },
       list: {
-        match: /^https:\/\/(www\.)?imdb\.com\/(search|chart|list|india|what-to-watch|user\/[^/]+\/(watchlist|ratings|lists))/,
+        match: /^https:\/\/(www\.)?imdb\.com\/(search|chart|list|india|what-to-watch|most-anticipated|best-of|user\/[^/]+\/(watchlist|ratings|lists))/,
         cards(doc) {
           const seen = new Set();
           const out = [];

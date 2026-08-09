@@ -80,6 +80,8 @@ test('imdb: list match covers search, charts, lists, and what-to-watch', () => {
   assert.ok(m.test('https://www.imdb.com/what-to-watch/popular/?ref_=watch_wls_tb'));
   assert.ok(m.test('https://www.imdb.com/what-to-watch/top-picks/?ref_=watch_fanfav_tb'));
   assert.ok(m.test('https://www.imdb.com/what-to-watch/fan-favorites/'));
+  assert.ok(m.test('https://www.imdb.com/most-anticipated/this-month/?ref_=hm_edcft_ft_csegmatm_elp_1_i'));
+  assert.ok(m.test('https://www.imdb.com/best-of/'));
   assert.ok(m.test('https://www.imdb.com/user/ur12345/watchlist'));
   assert.ok(!m.test('https://www.imdb.com/title/tt0111161/'));
 });

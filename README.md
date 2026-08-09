@@ -37,7 +37,9 @@ on install.
 - **Green "In Plex" / amber "Requested"** — already handled; nothing to do.
 - **Red "Retry request"** — a previous request failed in Radarr/Sonarr;
   click to retry it.
-- **List pages** (IMDb search/charts/lists/what-to-watch, TMDb, Trakt) —
+- **List pages** (every IMDb page — homepage carousels, search, charts,
+  editorial lists, filmographies, even the "More like this" shelf on title
+  pages — plus TMDb and Trakt grids) —
   labeled badges on covers: green **In Plex**, amber **Requested**, red
   **Retry**, blue **Request**. The blue and red ones are clickable: movies
   request in one click, TV auto-requests every season you're missing, red

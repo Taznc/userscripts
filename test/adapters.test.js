@@ -73,17 +73,21 @@ test('imdb: malformed json-ld still yields URL tt', () => {
   assert.equal(out.query, 'imdb:tt0111161');
 });
 
-test('imdb: list match covers search, charts, lists, and what-to-watch', () => {
+test('imdb: list match covers every imdb page (title pages get the button too)', () => {
   const m = byName.imdb.list.match;
-  assert.ok(m.test('https://www.imdb.com/search/title/?genres=drama'));
-  assert.ok(m.test('https://www.imdb.com/chart/top/'));
-  assert.ok(m.test('https://www.imdb.com/what-to-watch/popular/?ref_=watch_wls_tb'));
-  assert.ok(m.test('https://www.imdb.com/what-to-watch/top-picks/?ref_=watch_fanfav_tb'));
-  assert.ok(m.test('https://www.imdb.com/what-to-watch/fan-favorites/'));
-  assert.ok(m.test('https://www.imdb.com/most-anticipated/this-month/?ref_=hm_edcft_ft_csegmatm_elp_1_i'));
-  assert.ok(m.test('https://www.imdb.com/best-of/'));
-  assert.ok(m.test('https://www.imdb.com/user/ur12345/watchlist'));
-  assert.ok(!m.test('https://www.imdb.com/title/tt0111161/'));
+  for (const url of [
+    'https://www.imdb.com/',
+    'https://www.imdb.com/search/title/?genres=drama',
+    'https://www.imdb.com/chart/top/',
+    'https://www.imdb.com/what-to-watch/top-picks/?ref_=watch_fanfav_tb',
+    'https://www.imdb.com/most-anticipated/this-month/?ref_=hm_edcft_ft_csegmatm_elp_1_i',
+    'https://www.imdb.com/name/nm0000151/',
+    'https://www.imdb.com/user/ur12345/watchlist',
+    'https://www.imdb.com/title/tt0111161/', // detail button + shelf badges coexist
+  ]) {
+    assert.ok(m.test(url), url);
+  }
+  assert.ok(!m.test('https://www.themoviedb.org/movie/278'), 'other sites use their own adapters');
 });
 
 test('imdb: list cards dedupe by tt id', () => {

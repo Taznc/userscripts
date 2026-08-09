@@ -121,9 +121,16 @@ if (CASE === 'list') {
   const ld = isEp
     ? { '@type': 'TVEpisode', partOfSeries: { url: 'https://www.imdb.com/title/tt0903747/' } }
     : { '@type': isTv ? 'TVSeries' : 'Movie' };
+  const carousel = new URLSearchParams(location.search).get('carousel')
+    ? '<div class="grid">' +
+      '<li class="card ipc-poster-card"><a href="/title/tt0111161/?ref_=tt_sims">Self (skip)</a></li>' +
+      '<li class="card ipc-poster-card"><a href="/title/tt0068646/?ref_=tt_sims">Similar 1</a></li>' +
+      '<li class="card ipc-poster-card"><a href="/title/tt0071562/?ref_=tt_sims">Similar 2</a></li>' +
+      '</div>'
+    : '';
   stage.innerHTML = '<main><h1 data-testid="hero__pageTitle">' +
     (isTv || isEp ? 'Breaking Bad' : 'The Shawshank Redemption') +
-    '</h1><p class="meta">Simulated IMDb page — case: ' + CASE + '</p></main>';
+    '</h1><p class="meta">Simulated IMDb page — case: ' + CASE + '</p></main>' + carousel;
   const s = document.createElement('script');
   s.type = 'application/ld+json';
   s.textContent = JSON.stringify(ld);

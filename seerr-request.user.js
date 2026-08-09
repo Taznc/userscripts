@@ -325,7 +325,11 @@
         },
       },
       list: {
-        match: /^https:\/\/(www\.)?imdb\.com\/(search|chart|list|india|what-to-watch|most-anticipated|best-of|user\/[^/]+\/(watchlist|ratings|lists))/,
+        // Any IMDb page: homepage carousels, editorial lists, filmographies,
+        // and the "More like this" shelf on title pages. The scanner only
+        // acts on /title/tt anchors inside card containers, so pages with
+        // none cost nothing. Title pages still get the detail button first.
+        match: /^https:\/\/(www\.)?imdb\.com\//,
         cards(doc) {
           const seen = new Set();
           const out = [];
@@ -1278,6 +1282,7 @@
     if (!isConfigured(getCfg())) return;
     ensureHidePill();
     for (const card of safeCards(adapter, document)) {
+      if (card.query === currentDetailKey) continue; // don't badge the page itself
       if (seenCards.has(card.el)) continue;
       seenCards.add(card.el);
       card.el.__seerrCard = card;
@@ -1294,21 +1299,28 @@
   function route(force) {
     if (force) currentDetailKey = null;
     const href = hrefNow();
+    // Detail and list flows are not exclusive: a title page gets its button
+    // AND badges on its "More like this" shelf. detailFlow sets
+    // currentDetailKey synchronously, which listFlow uses to skip the card
+    // that refers to the page itself.
+    let matchedDetail = false;
     for (const adapter of adapters) {
       if (adapter.detail && adapter.detail.match.test(href)) {
-        removeHidePill(); // the toggle belongs to list pages only
         detailFlow(adapter);
-        return; // detail pages don't get list dots
+        matchedDetail = true;
+        break;
       }
     }
+    if (!matchedDetail) currentDetailKey = null;
+    let matchedList = false;
     for (const adapter of adapters) {
       if (adapter.list && adapter.list.match.test(href)) {
         listFlow(adapter);
-        return;
+        matchedList = true;
+        break;
       }
     }
-    removeHidePill();
-    currentDetailKey = null;
+    if (!matchedList) removeHidePill();
   }
 
   function boot() {

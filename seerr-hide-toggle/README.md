@@ -10,22 +10,27 @@ you don't already have.
 1. Install [Tampermonkey](https://www.tampermonkey.net/) (or Violentmonkey).
 2. Open `seerr-hide-toggle.user.js` — drag it into the browser, or paste it
    into Tampermonkey → Create new script.
-3. Visit your Seerr instance. Click the Tampermonkey icon → **"Set this
-   site as my Seerr instance"** → confirm the prompted hostname → reload.
+3. In Tampermonkey's Dashboard, click the script's name to open it, switch
+   to the **Settings** tab, and add your real Seerr URL (e.g.
+   `https://seerr.example.com/*`) under **User matches**.
+4. Reload your Seerr instance. Two buttons appear next to the filter bar
+   (or in the search bar on pages without one).
 
-The script matches every site (`@match *://*/*`) but only Tampermonkey's
-menu command actually configures where it does anything — your real
-hostname is stored in Tampermonkey's own storage, never in the script file.
-This is deliberate: Tampermonkey overwrites the *entire* script, metadata
-included, on every auto-update
+**Don't edit the `@match` line in the script itself** — it ships with a
+placeholder domain on purpose. Tampermonkey's auto-update replaces the
+*entire* script file, metadata included, on every version bump
 ([confirmed behavior](https://github.com/Tampermonkey/tampermonkey/issues/2405)),
-so a hardcoded personal domain would get silently wiped back to a
-placeholder the next time this repo pushes an update. On every other site
-the script does one hostname check and exits — negligible cost, no UI, no
-observer.
+so an in-place edit would silently revert to the placeholder on the next
+update and the script would stop running with no warning. "User matches"
+(step 3) is Tampermonkey's own per-installation setting, layered on top of
+the script rather than living inside it, so it survives updates. It also
+means the script is genuinely never injected into any other page — not
+"runs but does nothing," simply not present there at all.
 
-Two buttons appear next to the filter bar (or in the search bar on pages
-without one) once you're on the configured host.
+*(Violentmonkey users: look for the equivalent per-script include/match
+override in its own script-settings UI — the exact location differs from
+Tampermonkey's, but the same "don't hardcode it in the script body"
+reasoning applies.)*
 
 ## How status is detected
 
@@ -53,8 +58,7 @@ Not-yet-built ideas live in [ROADMAP.md](ROADMAP.md).
 node --test 'test/*.test.js'
 ```
 
-12 unit tests cover the color-matching logic, the host-gate, the filter-
-button finder, and the debounce helper, no
-DOM or browser needed. There's no browser harness for this script (unlike
+11 unit tests cover the color-matching logic, the filter-button finder, and
+the debounce helper, no DOM or browser needed. There's no browser harness for this script (unlike
 `seerr-request/`) — it manipulates your own private, authenticated Seerr
 instance, which isn't something to script fetches against from outside.

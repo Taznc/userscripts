@@ -61,14 +61,6 @@ test('shouldHide: only hides per the active toggles', () => {
   assert.equal(S.shouldHide(available, { hideRequested: false, hideAvailable: false }), false);
 });
 
-test('hostMatches: only true for an exact, non-empty configured host', () => {
-  assert.equal(S.hostMatches('seerr.example.com', 'seerr.example.com'), true);
-  assert.equal(S.hostMatches('seerr.example.com', 'other.example.com'), false);
-  assert.equal(S.hostMatches(null, 'seerr.example.com'), false);
-  assert.equal(S.hostMatches('', 'seerr.example.com'), false);
-  assert.equal(S.hostMatches(undefined, ''), false);
-});
-
 const fakeButton = (hasSvg, text) => ({
   querySelector: (sel) => (sel === 'svg' && hasSvg ? {} : null),
   textContent: text,

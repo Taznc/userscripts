@@ -1,18 +1,31 @@
 // ==UserScript==
 // @name         Seerr - Hide Requested/Available Toggle
 // @namespace    taznc.seerr-hide-toggle
-// @version      1.2.0
+// @version      1.3.0
 // @description  Toggle buttons to hide already-requested or already-available titles on Seerr's discover pages.
 // @author       joshashworth
-// @match        *://*/*
+// @match        https://your-seerr-domain.example/*
 // @run-at       document-idle
 // @grant        GM_setValue
 // @grant        GM_getValue
-// @grant        GM_registerMenuCommand
 // @updateURL    https://raw.githubusercontent.com/Taznc/userscripts/main/seerr-hide-toggle/seerr-hide-toggle.user.js
 // @downloadURL  https://raw.githubusercontent.com/Taznc/userscripts/main/seerr-hide-toggle/seerr-hide-toggle.user.js
 // @supportURL   https://github.com/Taznc/userscripts/issues
 // ==/UserScript==
+
+// The @match above is a placeholder on purpose — do not edit it in place.
+// Tampermonkey's auto-update replaces the ENTIRE script file, metadata
+// included, on every version bump (confirmed against Tampermonkey's own
+// issue tracker: github.com/Tampermonkey/tampermonkey/issues/2405), so an
+// edit made directly to this line would silently revert to the placeholder
+// on the next update and the script would stop running with no warning.
+//
+// Instead: Dashboard -> click this script's name -> Settings tab -> "User
+// matches" -> add your real Seerr URL there. That list is Tampermonkey's
+// own per-installation storage, layered on top of (not overwritten by) the
+// script body, so it survives updates. It also means the script is never
+// injected into other pages at all — not "runs but does nothing", simply
+// not present — unlike a broad @match with a runtime host check.
 
 (function () {
   'use strict';
@@ -65,17 +78,6 @@
     };
   };
 
-  // Tampermonkey's auto-update replaces the ENTIRE script file, metadata
-  // included, on every version bump — confirmed against Tampermonkey's own
-  // issue tracker (github.com/Tampermonkey/tampermonkey/issues/2405). A
-  // hardcoded personal @match would silently revert to whatever ships in
-  // this public repo on the next update, breaking the script with no
-  // warning. So @match is intentionally '*://*/*' (matches everywhere) and
-  // the actual target host is stored in GM storage instead, configured
-  // once via the menu command below — update-proof by construction, since
-  // nothing update-sensitive lives in the metadata block.
-  const hostMatches = (configuredHost, hostname) => Boolean(configuredHost) && configuredHost === hostname;
-
   // The old selector (button[class*="bg-gray-800/80"]) matches Seerr's
   // generic default Button style, used by at least 6 unrelated components
   // (dropdowns, slideovers, GenreCard hover state, ...) — confirmed against
@@ -94,32 +96,16 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { isRequested, isAvailable, shouldHide, hasBadgeColor, debounce, hostMatches, findFilterButton };
+    module.exports = { isRequested, isAvailable, shouldHide, hasBadgeColor, debounce, findFilterButton };
     return;
   }
 
   // ------------------------------------------------------------------
-  // Boot — DOM only, runs under a userscript manager
+  // Boot — DOM only, runs under a userscript manager. No host check
+  // needed here: Tampermonkey's own match filtering (see the comment
+  // above the metadata block) already guarantees this only runs on the
+  // page(s) you've configured.
   // ------------------------------------------------------------------
-
-  // Registered unconditionally (before the host check) so it's reachable
-  // from Tampermonkey's menu on ANY page — including the first visit to
-  // your Seerr instance, before it's configured.
-  GM_registerMenuCommand('Set this site as my Seerr instance', () => {
-    const current = GM_getValue('seerrHost', null);
-    const next = window.prompt(
-      "Enter this site's hostname to enable the hide-toggle buttons here (e.g. seerr.example.com):",
-      current || location.hostname
-    );
-    if (next && next.trim()) {
-      GM_setValue('seerrHost', next.trim());
-      window.alert('Saved. Reload this page.');
-    }
-  });
-
-  if (!hostMatches(GM_getValue('seerrHost', null), location.hostname)) {
-    return; // not the configured Seerr host: do nothing further on this page
-  }
 
   const state = {
     hideRequested: GM_getValue('hideRequested', false),

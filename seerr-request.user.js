@@ -989,15 +989,19 @@
 
   function renderDot(el, state) {
     if (!state || el.querySelector(':scope > [data-seerr-id="dot"]')) return;
-    const dot = document.createElement('span');
-    dot.setAttribute('data-seerr-id', 'dot');
-    dot.title = { available: 'In Plex', requested: 'Requested', failed: 'Request failed' }[state];
-    dot.style.cssText =
-      'position:absolute;top:6px;right:6px;width:10px;height:10px;border-radius:50%;z-index:10;' +
-      'background:' + DOT_COLORS[state] + ';box-shadow:0 0 0 2px rgba(255,255,255,.9);';
+    const badge = document.createElement('span');
+    badge.setAttribute('data-seerr-id', 'dot');
+    const label = { available: 'In Plex', requested: 'Requested', failed: 'Failed' }[state];
+    badge.textContent = label;
+    badge.title = { available: 'In Plex', requested: 'Requested', failed: 'Request failed' }[state];
+    badge.style.cssText =
+      'position:absolute;top:6px;right:6px;z-index:10;display:inline-block;' +
+      'padding:2px 8px;border-radius:999px;font:600 11px/1.5 system-ui,-apple-system,sans-serif;' +
+      'color:#fff;background:' + DOT_COLORS[state] + ';box-shadow:0 1px 3px rgba(0,0,0,.35);' +
+      'pointer-events:none;white-space:nowrap;';
     const cs = getComputedStyle(el);
     if (cs.position === 'static') el.style.position = 'relative';
-    el.appendChild(dot);
+    el.appendChild(badge);
   }
 
   function pumpQueue() {

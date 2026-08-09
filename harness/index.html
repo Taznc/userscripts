@@ -91,7 +91,7 @@ window.GM_xmlhttpRequest = (opts) => {
   if (opts.url.includes('/api/v1/search')) {
     if (c.perQuery) {
       const tt = (opts.url.match(/tt\d+/) || [])[0];
-      return respond(200, c.perQuery[tt] || { results: [] });
+      return respond(200, c.perQuery[tt] || { results: [{ ...shawshank, mediaInfo: { status: 1 } }] });
     }
     return respond(200, c.search || { results: [] });
   }

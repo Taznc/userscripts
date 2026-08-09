@@ -1076,6 +1076,20 @@
     request:   { bg: '#2563eb', label: 'Request', click: true },
     busy:      { bg: '#6b7280', label: '…', click: false },
   };
+  // getComputedStyle forces a synchronous layout — doing it per card during
+  // scroll is jank. Cards of the same class share positioning, so memoize
+  // the "is it position:static?" answer by className.
+  const positionMemo = new Map();
+  function ensurePositioned(el) {
+    const key = el.tagName + '|' + String(el.className);
+    let isStatic = positionMemo.get(key);
+    if (isStatic === undefined) {
+      isStatic = getComputedStyle(el).position === 'static';
+      positionMemo.set(key, isStatic);
+    }
+    if (isStatic) el.style.position = 'relative';
+  }
+
   let hideOwned = Boolean(GM_getValue('seerr_hide_owned', false));
 
   // Show/hide one card per the current toggle. Original inline display is
@@ -1217,8 +1231,7 @@
         'position:absolute;top:6px;right:6px;z-index:10;display:inline-block;' +
         'padding:2px 8px;border-radius:999px;font:600 11px/1.5 system-ui,-apple-system,sans-serif;' +
         'color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35);white-space:nowrap;';
-      const cs = getComputedStyle(el);
-      if (cs.position === 'static') el.style.position = 'relative';
+      ensurePositioned(el);
       // Card containers are usually wrapped in the title link: stop the
       // badge click from also navigating to the title page.
       badge.addEventListener('click', (e) => {
@@ -1323,14 +1336,39 @@
     if (!matchedList) removeHidePill();
   }
 
+  // A mutation is "ours" if every added/removed element is script UI
+  // (badges, hosts, pill). Without this filter, each badge insertion
+  // scheduled another full-page scan — the script was re-triggering itself
+  // for every badge it painted, which made scrolling stutter.
+  function isOurMutation(records) {
+    for (const r of records) {
+      for (const list of [r.addedNodes, r.removedNodes]) {
+        for (const n of list) {
+          if (n.nodeType !== 1) continue; // text nodes never carry cards
+          if (!n.hasAttribute('data-seerr-id')) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  // Chrome (and most browsers): run scans when the main thread is idle so
+  // they never compete with scroll frames. Fallback keeps Safari working.
+  const whenIdle =
+    typeof requestIdleCallback === 'function'
+      ? (fn) => requestIdleCallback(fn, { timeout: 2000 })
+      : (fn) => setTimeout(fn, 50);
+
   function boot() {
     GM_registerMenuCommand('Seerr settings', showSettings);
     // All four sites are SPAs: a one-shot mount dies on the first in-site
-    // navigation. Observe, debounce, re-route; mounting is idempotent.
-    new MutationObserver(debounce(() => route(false), 120)).observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
+    // navigation. Observe, debounce, re-route at idle; mounting is
+    // idempotent, so an extra pass is always safe.
+    const scheduleRoute = debounce(() => whenIdle(() => route(false)), 200);
+    new MutationObserver((records) => {
+      if (isOurMutation(records)) return;
+      scheduleRoute();
+    }).observe(document.body, { childList: true, subtree: true });
     route(false);
   }
 

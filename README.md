@@ -11,8 +11,11 @@ local storage on your machine — never committed here.
 ## Scripts
 
 - [`seerr-request/`](seerr-request/) — request movies & TV in
-  Overseerr/Jellyseerr directly from IMDb, TMDb, and Trakt, with library
-  status badges, one-click request/cancel, and season pickers for TV.
+  Overseerr/Jellyseerr/Seerr directly from IMDb, TMDb, and Trakt, with
+  library status badges, one-click request/cancel, and season pickers for TV.
+- [`seerr-hide-toggle/`](seerr-hide-toggle/) — toggle buttons on
+  [Seerr](https://github.com/seerr-team/seerr)'s own discover pages to hide
+  already-requested or already-available titles.
 
 ## Adding a new script
 

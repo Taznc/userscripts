@@ -2,7 +2,7 @@
 // @name         Seerr Request
 // @namespace    taznc.seerr
 // @version      1.1.0
-// @description  Show Overseerr/Jellyseerr library status and request movies & TV from IMDb, Letterboxd, TMDb, and Trakt.
+// @description  Show Overseerr/Jellyseerr/Seerr library status and request movies & TV from IMDb, Letterboxd, TMDb, and Trakt.
 // @author       joshashworth
 // @match        https://imdb.com/*
 // @match        https://*.imdb.com/*

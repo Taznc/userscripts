@@ -1,9 +1,9 @@
 # Seerr Request userscript
 
-Request movies and TV shows in Overseerr/Jellyseerr directly from IMDb,
-Letterboxd, TMDb, and Trakt — with library status on the button, a season
-picker for TV, quality-profile overrides, and at-a-glance status dots on
-list pages.
+Request movies and TV shows in Overseerr/Jellyseerr/[Seerr](https://github.com/seerr-team/seerr)
+directly from IMDb, Letterboxd, TMDb, and Trakt — with library status on
+the button, a season picker for TV, quality-profile overrides, and
+at-a-glance status dots on list pages.
 
 ## Install
 

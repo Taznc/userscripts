@@ -43,6 +43,10 @@ which silently missed anything that had been requested but wasn't yet
 processing. **Hide Available** hides both fully- and partially-available
 items (both render the same green badge in Seerr).
 
+## Roadmap
+
+Not-yet-built ideas live in [ROADMAP.md](ROADMAP.md).
+
 ## Development
 
 ```

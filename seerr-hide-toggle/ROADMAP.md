@@ -3,15 +3,14 @@
 Not built yet — ideas surfaced while reviewing the script, kept here rather
 than implemented unprompted since they're taste calls, not bugs.
 
-- [ ] **Hidden-count feedback.** Buttons currently show `Hide Requested: ON`
-      / `OFF`. Show how many cards are actually hidden, e.g.
-      `Hide Requested: ON (12 hidden)`, so the toggle's effect is visible
-      even on pages where it's not obvious at a glance.
+- [x] **Hidden-count feedback.** ~~Buttons currently show `Hide Requested:
+      ON` / `OFF`.~~ Shipped in v1.4.0: buttons show
+      `Hide Requested: ON (12 hidden)` with live per-toggle counts.
 
-- [ ] **Empty-state message.** If the active toggle combination hides every
-      card on the current page, the grid just goes blank with no
-      explanation. Show a small message instead (e.g. "Nothing to show —
-      try turning off a filter").
+- [x] **Empty-state message.** ~~If the active toggle combination hides
+      every card on the current page, the grid just goes blank with no
+      explanation.~~ Shipped in v1.4.0: a dashed-border notice appears
+      under any vertical grid whose cards are all hidden by the toggles.
 
 - [ ] **Third toggle for Blocklisted items.** Seerr has a `BLOCKLISTED`
       media status (red badge) that neither existing toggle touches —

@@ -3,7 +3,9 @@
 Two small toggle buttons injected into [Seerr](https://github.com/seerr-team/seerr)'s
 discover/home pages: **Hide Requested** and **Hide Available**. Flip one on
 and matching cards disappear from the grid — useful for browsing only what
-you don't already have.
+you don't already have. Each button shows a live count of what it's hiding
+(`Hide Requested: ON (12 hidden)`), a notice appears if a grid ends up
+fully hidden, and toggling in one Seerr tab syncs to any others.
 
 ## Install
 
@@ -34,13 +36,13 @@ reasoning applies.)*
 
 ## How status is detected
 
-Seerr renders a colored badge per title: indigo/primary = processing,
-yellow/warning = pending, green/success = available *and* partially
-available. This script matches by color **family** (`bg-indigo`,
-`bg-yellow`, `bg-green`) rather than an exact class name, since the precise
-shade and opacity-class syntax have varied across Seerr versions — a prefix
-match can't regress when your instance updates, only gain coverage back if
-something ever changes.
+Seerr renders card status through its `StatusBadgeMini` component: indigo =
+processing, yellow = pending, green = available *and* partially available
+(detail pages use a separate `StatusBadge` component with the same color
+families but different border shades). This script matches by color
+**family** (`bg-indigo`, `bg-yellow`, `bg-green`) rather than an exact
+class name, which covers both components and can't regress if either
+shifts a shade in a future Seerr version.
 
 **Hide Requested** hides both processing and pending items (indigo or
 yellow badge) — an earlier version of this script only matched indigo,
@@ -58,7 +60,9 @@ Not-yet-built ideas live in [ROADMAP.md](ROADMAP.md).
 node --test 'test/*.test.js'
 ```
 
-11 unit tests cover the color-matching logic, the filter-button finder, and
-the debounce helper, no DOM or browser needed. There's no browser harness for this script (unlike
+14 unit tests cover the color-matching logic (with fixtures mirroring
+Seerr's real `StatusBadgeMini`/`TitleCard` class strings verbatim), the
+button labels, the filter-button finder, and the debounce helper, no DOM
+or browser needed. There's no browser harness for this script (unlike
 `seerr-request/`) — it manipulates your own private, authenticated Seerr
 instance, which isn't something to script fetches against from outside.

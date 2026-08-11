@@ -4,13 +4,19 @@ const assert = require('node:assert');
 
 const S = require('../seerr-hide-toggle.user.js');
 
-const badge = (className) => ({ className });
+// Fixture elements expose getAttribute('class') like real DOM nodes — the
+// implementation must use getAttribute, not .className (which is an
+// SVGAnimatedString object on SVG elements; see the svg test below).
+const badge = (cls) => ({
+  getAttribute: (k) => (k === 'class' ? cls : null),
+  className: cls,
+});
 // Mimics the real DOM: querySelectorAll('[class*="rounded-full"]') only
-// returns elements whose className actually contains that substring.
+// returns elements whose class attribute actually contains that substring.
 const card = (badges) => ({
   querySelectorAll: (sel) => {
     const needle = sel.match(/\[class\*="([^"]+)"\]/)[1];
-    return badges.filter((b) => (b.className || '').includes(needle));
+    return badges.filter((b) => (b.getAttribute('class') || '').includes(needle));
   },
 });
 
@@ -18,37 +24,63 @@ test('module loads under node without booting', () => {
   assert.equal(typeof S.isRequested, 'function');
   assert.equal(typeof S.isAvailable, 'function');
   assert.equal(typeof S.shouldHide, 'function');
+  assert.equal(typeof S.buttonLabel, 'function');
 });
 
-test('isRequested: matches processing (indigo)', () => {
-  const c = card([badge('px-2 rounded-full bg-indigo-500/80 border border-indigo-500')]);
+// Class strings below mirror seerr-team/seerr's StatusBadgeMini verbatim.
+
+test('isRequested: matches processing (indigo, StatusBadgeMini shape)', () => {
+  const c = card([badge('rounded-full shadow-md w-4 sm:w-5 border p-0 bg-indigo-500/80 border-indigo-400 ring-indigo-400 text-indigo-100')]);
   assert.equal(S.isRequested(c), true);
   assert.equal(S.isAvailable(c), false);
 });
 
 test('isRequested: matches pending (yellow) — the gap in the original script', () => {
-  const c = card([badge('px-2 rounded-full bg-yellow-500/80 border border-yellow-500')]);
+  const c = card([badge('rounded-full shadow-md w-5 ring-1 p-0.5 bg-yellow-500/80 border-yellow-400 ring-yellow-400 text-yellow-100')]);
   assert.equal(S.isRequested(c), true);
 });
 
-test('isAvailable: matches success green regardless of exact shade/border', () => {
-  const c = card([badge('px-2 rounded-full bg-green-500 bg-opacity-80 border border-green-400')]);
-  assert.equal(S.isAvailable(c), true);
-  assert.equal(S.isRequested(c), false);
+test('isAvailable: matches green with either border shade (Mini uses -400, detail-page badge uses -500)', () => {
+  const mini = card([badge('rounded-full bg-green-500/80 border-green-400 ring-green-400')]);
+  const detail = card([badge('px-2 rounded-full bg-green-500/80 border border-green-500 !text-green-100')]);
+  assert.equal(S.isAvailable(mini), true);
+  assert.equal(S.isAvailable(detail), true);
+  assert.equal(S.isRequested(mini), false);
 });
 
-test('no match: danger (red/deleted) and default (unstyled) card are neither requested nor available', () => {
-  const c = card([badge('px-2 rounded-full bg-red-600/80 border border-red-500')]);
-  assert.equal(S.isRequested(c), false);
-  assert.equal(S.isAvailable(c), false);
+test('no match: red badges (blocklisted/deleted) and unbadged cards are neither requested nor available', () => {
+  const blocklisted = card([badge('rounded-full bg-red-500/80 border-white ring-white text-white')]);
+  assert.equal(S.isRequested(blocklisted), false);
+  assert.equal(S.isAvailable(blocklisted), false);
   const plain = card([]);
   assert.equal(S.isRequested(plain), false);
   assert.equal(S.isAvailable(plain), false);
 });
 
+test('no match: media-type pill (bg-blue/bg-purple, rounded-full) never false-positives', () => {
+  const moviePill = card([badge('pointer-events-none z-40 self-start rounded-full border shadow-md border-blue-500 bg-blue-600/80')]);
+  const tvPill = card([badge('pointer-events-none z-40 self-start rounded-full border shadow-md border-purple-600 bg-purple-600/80')]);
+  assert.equal(S.isRequested(moviePill), false);
+  assert.equal(S.isAvailable(moviePill), false);
+  assert.equal(S.isRequested(tvPill), false);
+  assert.equal(S.isAvailable(tvPill), false);
+});
+
 test('color match is scoped to rounded-full badges, ignoring unrelated colored elements', () => {
   const c = card([badge('poster-thumbnail bg-indigo-900 rounded-lg')]); // not a badge shape
   assert.equal(S.isRequested(c), false);
+});
+
+test('svg elements do not crash the sweep (className is not a string on svg)', () => {
+  // Real SVG DOM: className is an SVGAnimatedString OBJECT — calling
+  // .includes on it throws. getAttribute('class') is always a string.
+  const svgLike = {
+    className: { baseVal: 'rounded-full bg-indigo-500/80' }, // object, like real svg
+    getAttribute: (k) => (k === 'class' ? 'rounded-full bg-indigo-500/80' : null),
+  };
+  const c = card([svgLike]);
+  assert.doesNotThrow(() => S.isRequested(c));
+  assert.equal(S.isRequested(c), true);
 });
 
 test('shouldHide: only hides per the active toggles', () => {
@@ -59,6 +91,13 @@ test('shouldHide: only hides per the active toggles', () => {
   assert.equal(S.shouldHide(available, { hideRequested: true, hideAvailable: false }), false);
   assert.equal(S.shouldHide(available, { hideRequested: false, hideAvailable: true }), true);
   assert.equal(S.shouldHide(available, { hideRequested: false, hideAvailable: false }), false);
+});
+
+test('buttonLabel: OFF has no count, ON shows count only when nonzero', () => {
+  assert.equal(S.buttonLabel('Hide Requested', false, 12), 'Hide Requested: OFF');
+  assert.equal(S.buttonLabel('Hide Requested', true, 0), 'Hide Requested: ON');
+  assert.equal(S.buttonLabel('Hide Requested', true, 1), 'Hide Requested: ON (1 hidden)');
+  assert.equal(S.buttonLabel('Hide Available', true, 12), 'Hide Available: ON (12 hidden)');
 });
 
 const fakeButton = (hasSvg, text) => ({

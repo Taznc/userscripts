@@ -24,8 +24,8 @@ test('module loads under node without booting', () => {
   assert.equal(typeof S.isRequested, 'function');
   assert.equal(typeof S.isAvailable, 'function');
   assert.equal(typeof S.shouldHide, 'function');
-  assert.equal(typeof S.isBlocklisted, 'function');
-  assert.equal(typeof S.toggleTitle, 'function');
+  assert.equal(typeof S.isDeleted, 'function');
+  assert.equal(typeof S.tooltipContent, 'function');
 });
 
 // Class strings below mirror seerr-team/seerr's StatusBadgeMini verbatim.
@@ -58,23 +58,25 @@ test('no match: red badges (blocklisted/deleted) and unbadged cards are neither 
   assert.equal(S.isAvailable(plain), false);
 });
 
-test('isBlocklisted: matches the blocklist badge but NOT the deleted badge (both are red)', () => {
-  // Verbatim StatusBadgeMini class strings: text-white is the discriminator.
+test('isDeleted: matches the deleted badge but NOT the blocklist badge (both are red)', () => {
+  // Verbatim StatusBadgeMini class strings (deleted string also confirmed
+  // against a live-instance DOM sample): text color is the discriminator —
+  // deleted = text-red-100, blocklisted = text-white.
+  const deleted = card([badge('rounded-full shadow-md w-4 sm:w-5 border p-0 bg-red-500/80 border-red-400 ring-red-400 text-red-100')]);
   const blocklisted = card([badge('rounded-full shadow-md w-5 ring-1 p-0.5 bg-red-500/80 border-white ring-white text-white')]);
-  const deleted = card([badge('rounded-full shadow-md w-5 ring-1 p-0.5 bg-red-500/80 border-red-400 ring-red-400 text-red-100')]);
-  assert.equal(S.isBlocklisted(blocklisted), true);
-  assert.equal(S.isBlocklisted(deleted), false);
-  assert.equal(S.isBlocklisted(card([])), false);
+  assert.equal(S.isDeleted(deleted), true);
+  assert.equal(S.isDeleted(blocklisted), false);
+  assert.equal(S.isDeleted(card([])), false);
 });
 
-test('shouldHide: blocklist toggle hides blocklisted only, never deleted', () => {
-  const blocklisted = card([badge('rounded-full bg-red-500/80 border-white text-white')]);
+test('shouldHide: deleted toggle hides deleted only, never blocklisted', () => {
   const deleted = card([badge('rounded-full bg-red-500/80 border-red-400 text-red-100')]);
-  const on = { hideRequested: false, hideAvailable: false, hideBlocklisted: true };
-  assert.equal(S.shouldHide(blocklisted, on), true);
-  assert.equal(S.shouldHide(deleted, on), false);
-  const off = { hideRequested: true, hideAvailable: true, hideBlocklisted: false };
-  assert.equal(S.shouldHide(blocklisted, off), false);
+  const blocklisted = card([badge('rounded-full bg-red-500/80 border-white text-white')]);
+  const on = { hideRequested: false, hideAvailable: false, hideDeleted: true };
+  assert.equal(S.shouldHide(deleted, on), true);
+  assert.equal(S.shouldHide(blocklisted, on), false);
+  const off = { hideRequested: true, hideAvailable: true, hideDeleted: false };
+  assert.equal(S.shouldHide(deleted, off), false);
 });
 
 test('no match: media-type pill (bg-blue/bg-purple, rounded-full) never false-positives', () => {
@@ -113,16 +115,19 @@ test('shouldHide: only hides per the active toggles', () => {
   assert.equal(S.shouldHide(available, { hideRequested: false, hideAvailable: false }), false);
 });
 
-test('toggleTitle: OFF invites, ON explains with count', () => {
-  assert.equal(S.toggleTitle('requested titles', false, 12), 'Click to hide requested titles');
-  assert.equal(
-    S.toggleTitle('requested titles', true, 12),
-    'Hiding requested titles — 12 hidden on this page. Click to show them.'
-  );
-  assert.equal(
-    S.toggleTitle('blocklisted titles', true, 0),
-    'Hiding blocklisted titles — none on this page right now. Click to turn off.'
-  );
+test('tooltipContent: glanceable heading + short state detail', () => {
+  assert.deepEqual(S.tooltipContent('Requested', false, 12), {
+    heading: 'Requested',
+    detail: 'Click to hide',
+  });
+  assert.deepEqual(S.tooltipContent('Requested', true, 12), {
+    heading: 'Requested',
+    detail: 'Hiding 12 — click to show',
+  });
+  assert.deepEqual(S.tooltipContent('Blocklisted', true, 0), {
+    heading: 'Blocklisted',
+    detail: 'Hiding — none here',
+  });
 });
 
 const fakeButton = (hasSvg, text) => ({

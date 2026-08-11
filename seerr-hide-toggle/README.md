@@ -2,12 +2,12 @@
 
 Three compact icon toggles injected into [Seerr](https://github.com/seerr-team/seerr)'s
 discover/home pages: **Hide Requested**, **Hide Available**, and **Hide
-Blocklisted**. Each toggle is a replica of the exact status badge it hides
-— the same colored circle and icon Seerr puts on cards (indigo clock =
-requested, green check = available, red eye-slash = blocklisted) — with a
-white slash struck through it while hiding is on, plus a live count of how
-many cards it's currently hiding. Hover any toggle for a full-sentence
-explanation. A notice appears if a grid ends up fully hidden, and toggling
+Deleted**. Each toggle is a replica of the exact status badge it hides —
+the same colored circle and icon Seerr puts on cards (indigo clock =
+requested, green check = available, red trash = deleted) — with a white
+slash struck through it while hiding is on, plus a live count in a
+fixed-width slot so the toggles never change shape. Hovering shows an
+instant, large tooltip (no native-tooltip delay). A notice appears if a grid ends up fully hidden, and toggling
 in one Seerr tab syncs to any others.
 
 ## Install
@@ -51,10 +51,11 @@ shifts a shade in a future Seerr version.
 yellow badge) — an earlier version of this script only matched indigo,
 which silently missed anything that had been requested but wasn't yet
 processing. **Hide Available** hides both fully- and partially-available
-items (both render the same green badge in Seerr). **Hide Blocklisted**
-hides red blocklist badges only — deleted titles also render red, but the
-blocklist badge alone carries `text-white`, which is the discriminator, so
-deleted items are never hidden by mistake.
+items (both render the same green badge in Seerr). **Hide Deleted** hides
+red deleted badges only — blocklisted titles also render red, but the
+deleted badge alone carries `text-red-100` (blocklist uses `text-white`),
+which is the discriminator, so blocklisted items are never hidden by
+mistake.
 
 ## Roadmap
 
@@ -68,8 +69,12 @@ node --test 'test/*.test.js'
 
 16 unit tests cover the color-matching logic (with fixtures mirroring
 Seerr's real `StatusBadgeMini`/`TitleCard` class strings verbatim),
-blocklist-vs-deleted discrimination, the tooltip text, the filter-button
+deleted-vs-blocklisted discrimination, the tooltip text, the filter-button
 finder, and the debounce helper, no DOM or browser needed. The embedded
-heroicons SVG paths are diffed byte-for-byte against upstream heroicons. There's no browser harness for this script (unlike
-`seerr-request/`) — it manipulates your own private, authenticated Seerr
-instance, which isn't something to script fetches against from outside.
+heroicons SVG paths are diffed byte-for-byte against upstream heroicons.
+
+`harness/index.html` is a static mock of Seerr's filter bar and card grid
+(GM_* stubbed, badge class strings verbatim from `StatusBadgeMini`) for
+eyeballing the toggles, tooltip, and hide behavior without touching a real
+instance — serve the repo root over HTTP and open it. It never talks to a
+Seerr server.

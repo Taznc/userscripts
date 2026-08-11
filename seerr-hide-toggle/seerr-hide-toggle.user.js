@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Seerr - Hide Requested/Available Toggle
 // @namespace    taznc.seerr-hide-toggle
-// @version      1.5.0
-// @description  Compact badge-replica toggles to hide requested, available, or blocklisted titles on Seerr's discover pages.
+// @version      1.6.0
+// @description  Compact badge-replica toggles to hide requested, available, or deleted titles on Seerr's discover pages.
 // @author       joshashworth
 // @match        https://your-seerr-domain.example/*
 // @run-at       document-idle
@@ -74,14 +74,16 @@
   const isRequested = (card) => hasBadgeColor(card, REQUESTED_COLORS);
   const isAvailable = (card) => hasBadgeColor(card, AVAILABLE_COLORS);
 
-  // Blocklisted and deleted BOTH render bg-red in StatusBadgeMini; the
-  // discriminator (from the class strings above) is that only the
-  // blocklist badge carries text-white. A plain bg-red match would wrongly
-  // hide deleted titles too.
-  function isBlocklisted(card) {
+  // Deleted and blocklisted BOTH render bg-red in StatusBadgeMini; the
+  // discriminator (from the class strings above) is text color: deleted
+  // carries text-red-100, blocklisted carries text-white. A plain bg-red
+  // match would wrongly hide blocklisted titles too. (Verified against a
+  // live-instance DOM sample of the deleted badge, which matches the
+  // source verbatim.)
+  function isDeleted(card) {
     for (const badge of card.querySelectorAll('[class*="rounded-full"]')) {
       const cls = badge.getAttribute('class') || '';
-      if (cls.includes('bg-red') && cls.includes('text-white')) return true;
+      if (cls.includes('bg-red') && cls.includes('text-red-100')) return true;
     }
     return false;
   }
@@ -90,17 +92,19 @@
     return Boolean(
       (state.hideRequested && isRequested(card)) ||
         (state.hideAvailable && isAvailable(card)) ||
-        (state.hideBlocklisted && isBlocklisted(card))
+        (state.hideDeleted && isDeleted(card))
     );
   }
 
-  // Tooltip / accessible label for an icon toggle. The icons are compact,
-  // so this carries the full explanation.
-  function toggleTitle(nounPlural, on, hiddenCount) {
-    if (!on) return `Click to hide ${nounPlural}`;
+  // Content for the custom tooltip (native title tooltips are slow to
+  // appear, tiny, and unstylable — the user-visible tooltip is our own).
+  // Kept to a glance: big heading = which status, short detail = state.
+  // The slash + count on the button itself already carry the rest.
+  function tooltipContent(label, on, hiddenCount) {
+    if (!on) return { heading: label, detail: 'Click to hide' };
     return hiddenCount > 0
-      ? `Hiding ${nounPlural} — ${hiddenCount} hidden on this page. Click to show them.`
-      : `Hiding ${nounPlural} — none on this page right now. Click to turn off.`;
+      ? { heading: label, detail: `Hiding ${hiddenCount} — click to show` }
+      : { heading: label, detail: 'Hiding — none here' };
   }
 
   const debounce = (fn, ms) => {
@@ -132,10 +136,10 @@
     module.exports = {
       isRequested,
       isAvailable,
-      isBlocklisted,
+      isDeleted,
       shouldHide,
       hasBadgeColor,
-      toggleTitle,
+      tooltipContent,
       debounce,
       findFilterButton,
     };
@@ -152,13 +156,13 @@
   const state = {
     hideRequested: GM_getValue('hideRequested', false),
     hideAvailable: GM_getValue('hideAvailable', false),
-    hideBlocklisted: GM_getValue('hideBlocklisted', false),
+    hideDeleted: GM_getValue('hideDeleted', false),
   };
 
   // Per-toggle counts from the last sweep, shown next to the icons. A card
   // hidden by more than one toggle counts toward each — every icon reports
   // what its own toggle is responsible for.
-  const lastCounts = { hideRequested: 0, hideAvailable: 0, hideBlocklisted: 0 };
+  const lastCounts = { hideRequested: 0, hideAvailable: 0, hideDeleted: 0 };
   const buttonRefreshers = [];
   const refreshButtons = () => buttonRefreshers.forEach((fn) => fn());
 
@@ -187,20 +191,20 @@
   function applyFilter() {
     lastCounts.hideRequested = 0;
     lastCounts.hideAvailable = 0;
-    lastCounts.hideBlocklisted = 0;
+    lastCounts.hideDeleted = 0;
 
     const applyTo = (el) => {
       const requested = isRequested(el);
       const available = isAvailable(el);
-      const blocklisted = isBlocklisted(el);
+      const deleted = isDeleted(el);
       const hide =
         (state.hideRequested && requested) ||
         (state.hideAvailable && available) ||
-        (state.hideBlocklisted && blocklisted);
+        (state.hideDeleted && deleted);
       if (hide) {
         if (state.hideRequested && requested) lastCounts.hideRequested++;
         if (state.hideAvailable && available) lastCounts.hideAvailable++;
-        if (state.hideBlocklisted && blocklisted) lastCounts.hideBlocklisted++;
+        if (state.hideDeleted && deleted) lastCounts.hideDeleted++;
       }
       // Idempotent write: re-setting the same display value on hundreds of
       // cards per sweep is pointless CSSOM churn.
@@ -239,9 +243,11 @@
     // CheckIcon — the green AVAILABLE badge
     check:
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12" aria-hidden="true"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd"/></svg>',
-    // EyeSlashIcon — the red BLOCKLISTED badge
-    eyeSlash:
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12" aria-hidden="true"><path fill-rule="evenodd" d="M3.28 2.22a.75.75 0 0 0-1.06 1.06l14.5 14.5a.75.75 0 1 0 1.06-1.06l-1.745-1.745a10.029 10.029 0 0 0 3.3-4.38 1.651 1.651 0 0 0 0-1.185A10.004 10.004 0 0 0 9.999 3a9.956 9.956 0 0 0-4.744 1.194L3.28 2.22ZM7.752 6.69l1.092 1.092a2.5 2.5 0 0 1 3.374 3.373l1.091 1.092a4 4 0 0 0-5.557-5.557Z" clip-rule="evenodd"/><path d="m10.748 13.93 2.523 2.523a9.987 9.987 0 0 1-3.27.547c-4.258 0-7.894-2.66-9.337-6.41a1.651 1.651 0 0 1 0-1.186A10.007 10.007 0 0 1 2.839 6.02L6.07 9.252a4 4 0 0 0 4.678 4.678Z"/></svg>',
+    // TrashIcon — the red DELETED badge (path diffed byte-for-byte against
+    // upstream heroicons 24/solid AND a live-instance DOM sample; Seerr
+    // uses the 24-viewBox icon for this one)
+    trash:
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="12" height="12" aria-hidden="true"><path fill-rule="evenodd" d="M16.5 4.478v.227a48.816 48.816 0 0 1 3.878.512.75.75 0 1 1-.256 1.478l-.209-.035-1.005 13.07a3 3 0 0 1-2.991 2.77H8.084a3 3 0 0 1-2.991-2.77L4.087 6.66l-.209.035a.75.75 0 0 1-.256-1.478A48.567 48.567 0 0 1 7.5 4.705v-.227c0-1.564 1.213-2.9 2.816-2.951a52.662 52.662 0 0 1 3.369 0c1.603.051 2.815 1.387 2.815 2.951Zm-6.136-1.452a51.196 51.196 0 0 1 3.273 0C14.39 3.05 15 3.684 15 4.478v.113a49.488 49.488 0 0 0-6 0v-.113c0-.794.609-1.428 1.364-1.452Zm-.355 5.945a.75.75 0 1 0-1.5.058l.347 9a.75.75 0 1 0 1.499-.058l-.346-9Zm5.48.058a.75.75 0 1 0-1.498-.058l-.347 9a.75.75 0 0 0 1.5.058l.345-9Z" clip-rule="evenodd"/></svg>',
   };
 
   const TOGGLES = [
@@ -250,28 +256,76 @@
       key: 'hideRequested',
       color: 'rgba(99,102,241,0.9)', // indigo-500, like the badge
       icon: ICONS.clock,
-      noun: 'requested titles',
+      label: 'Requested',
     },
     {
       id: 'seerr-hide-available-toggle',
       key: 'hideAvailable',
       color: 'rgba(34,197,94,0.9)', // green-500, like the badge
       icon: ICONS.check,
-      noun: 'available titles',
+      label: 'Available',
     },
     {
-      id: 'seerr-hide-blocklisted-toggle',
-      key: 'hideBlocklisted',
+      id: 'seerr-hide-deleted-toggle',
+      key: 'hideDeleted',
       color: 'rgba(239,68,68,0.9)', // red-500, like the badge
-      icon: ICONS.eyeSlash,
-      noun: 'blocklisted titles',
+      icon: ICONS.trash,
+      label: 'Deleted',
     },
   ];
 
-  function makeToggle({ id, key, color, icon, noun }) {
+  // Custom tooltip: instant (no native ~1s title delay), large, and
+  // shared — one element repositioned under whichever toggle is hovered.
+  // pointer-events:none so it can never trap the cursor.
+  let tooltipEl = null;
+  let tooltipHeadingEl = null;
+  let tooltipDetailEl = null;
+  let tooltipFor = null; // toggle button the tooltip is currently shown for
+
+  function ensureTooltip() {
+    if (tooltipEl && tooltipEl.isConnected) return;
+    tooltipEl = document.createElement('div');
+    tooltipEl.setAttribute('data-seerr-tooltip', '');
+    tooltipEl.style.cssText =
+      'position:fixed;z-index:2147483647;display:none;pointer-events:none;white-space:nowrap;' +
+      'background:rgba(17,24,39,0.97);border:1px solid #4b5563;border-radius:10px;' +
+      'padding:10px 14px;box-shadow:0 8px 24px rgba(0,0,0,.5);text-align:center;';
+    tooltipHeadingEl = document.createElement('div');
+    tooltipHeadingEl.style.cssText = 'font-size:16px;font-weight:700;color:#fff;line-height:1.3;';
+    tooltipDetailEl = document.createElement('div');
+    tooltipDetailEl.style.cssText = 'font-size:13px;font-weight:500;color:#d1d5db;line-height:1.4;';
+    tooltipEl.append(tooltipHeadingEl, tooltipDetailEl);
+    document.body.appendChild(tooltipEl);
+  }
+
+  function showTooltip(btn, cfg) {
+    ensureTooltip();
+    tooltipFor = btn;
+    const { heading, detail } = tooltipContent(cfg.label, state[cfg.key], lastCounts[cfg.key]);
+    tooltipHeadingEl.textContent = heading;
+    tooltipDetailEl.textContent = detail;
+    tooltipEl.style.display = 'block';
+    // Position under the button, centered, clamped to the viewport (the
+    // toggles sit near the right edge, where naive centering overflows).
+    const r = btn.getBoundingClientRect();
+    const half = tooltipEl.offsetWidth / 2;
+    let center = r.left + r.width / 2;
+    center = Math.max(8 + half, Math.min(center, window.innerWidth - 8 - half));
+    tooltipEl.style.left = `${center - half}px`;
+    tooltipEl.style.top = `${r.bottom + 8}px`;
+  }
+
+  function hideTooltip() {
+    tooltipFor = null;
+    if (tooltipEl) tooltipEl.style.display = 'none';
+  }
+
+  function makeToggle(cfg) {
+    const { id, key, color, icon } = cfg;
     const btn = document.createElement('button');
     btn.id = id;
     btn.type = 'button';
+    btn.setAttribute('data-seerr-toggle', ''); // marks it ours for the observer filter
     btn.style.cssText =
       'display:inline-flex;align-items:center;gap:5px;border:1px solid #4b5563;border-radius:8px;' +
       'padding:5px 8px;background:rgba(31,41,55,0.8);cursor:pointer;margin-left:8px;' +
@@ -291,7 +345,12 @@
     circle.appendChild(slash);
 
     const count = document.createElement('span');
-    count.style.cssText = 'font-size:12px;font-weight:600;color:#e5e7eb;';
+    // Fixed-width slot, always in the layout: the toggle's footprint stays
+    // identical whether a count is showing or not (counts up to 2 digits;
+    // a 3-digit count widens that one toggle slightly rather than clipping).
+    count.style.cssText =
+      'display:inline-block;min-width:18px;text-align:center;' +
+      'font-size:12px;font-weight:600;color:#e5e7eb;';
 
     btn.append(circle, count);
 
@@ -302,12 +361,16 @@
       circle.style.opacity = on ? '1' : '0.45';
       btn.style.borderColor = on ? '#6366f1' : '#4b5563';
       btn.style.background = on ? 'rgba(67,56,202,0.35)' : 'rgba(31,41,55,0.8)';
+      // Slot stays in the layout either way — only the text comes and goes.
       count.textContent = on && n > 0 ? String(n) : '';
-      count.style.display = on && n > 0 ? '' : 'none';
-      const title = toggleTitle(noun, on, n);
-      btn.title = title;
-      btn.setAttribute('aria-label', title);
+      // No btn.title: the native tooltip is slow, tiny, and would double
+      // up with the custom one. aria-label keeps the info for screen
+      // readers; sighted users get the instant custom tooltip.
+      const { heading, detail } = tooltipContent(cfg.label, on, n);
+      btn.setAttribute('aria-label', `${heading}: ${detail}`);
       btn.setAttribute('aria-pressed', String(on));
+      // State changed while the tooltip is up (a click): update it live.
+      if (tooltipFor === btn) showTooltip(btn, cfg);
     }
 
     btn.addEventListener('click', () => {
@@ -315,6 +378,10 @@
       GM_setValue(key, state[key]);
       applyFilter(); // recomputes counts and refreshes every toggle
     });
+    btn.addEventListener('mouseenter', () => showTooltip(btn, cfg));
+    btn.addEventListener('mouseleave', hideTooltip);
+    btn.addEventListener('focus', () => showTooltip(btn, cfg));
+    btn.addEventListener('blur', hideTooltip);
 
     buttonRefreshers.push(refresh);
     refresh();
@@ -350,21 +417,56 @@
     }
   }
 
-  // Debounced: Seerr's React app fires many childList mutations in a burst
-  // on every navigation/search-result render. The original version ran a
-  // full-page querySelectorAll sweep synchronously on every single one of
-  // them — the same scroll/render-jank pattern found and fixed in the
-  // seerr-request script. No self-mutation filtering is needed here: style
-  // writes in applyFilter() don't set `attributes: true`, so they can't
-  // retrigger this observer the way DOM insertions did there. (The
-  // empty-state insert/remove and button injection DO retrigger it, but
-  // both are idempotent, so the follow-up sweep settles immediately.)
+  // Scroll-smoothness, same two levers that fixed the identical jank in
+  // the seerr-request script:
+  //
+  // 1. Sweeps run at IDLE, never mid-scroll-frame. Seerr's infinite
+  //    scroll + lazy images fire mutation bursts continuously while
+  //    scrolling; a debounce alone still lands the sweep in the middle of
+  //    scrolling. requestIdleCallback waits for a frame gap.
+  // 2. Our own DOM work (buttons, empty-state notice, tooltip) doesn't
+  //    schedule sweeps at all. Additions of our own elements are filtered
+  //    out; element REMOVALS always re-route — asymmetric on purpose, so
+  //    React stripping our buttons in a re-render still re-injects them.
+  const whenIdle =
+    typeof requestIdleCallback === 'function'
+      ? (fn) => requestIdleCallback(fn, { timeout: 2000 })
+      : (fn) => setTimeout(fn, 50);
+
   const scheduleRefresh = debounce(() => {
-    injectButton();
-    applyFilter();
+    whenIdle(() => {
+      injectButton();
+      applyFilter();
+    });
   }, 150);
 
-  const observer = new MutationObserver(scheduleRefresh);
+  const OUR_ATTRS = ['data-seerr-toggle', 'data-seerr-tooltip', 'data-seerr-hide-empty'];
+  const isOurNode = (n) =>
+    n.nodeType === 1 && OUR_ATTRS.some((a) => n.hasAttribute(a));
+
+  const observer = new MutationObserver((records) => {
+    let relevant = false;
+    for (const r of records) {
+      // Tooltip content churn happens on every hover and is entirely ours.
+      if (tooltipEl && tooltipEl.contains(r.target)) continue;
+      for (const n of r.addedNodes) {
+        if (n.nodeType === 1 && !isOurNode(n)) {
+          relevant = true;
+          break;
+        }
+      }
+      if (!relevant) {
+        for (const n of r.removedNodes) {
+          if (n.nodeType === 1) {
+            relevant = true;
+            break;
+          }
+        }
+      }
+      if (relevant) break;
+    }
+    if (relevant) scheduleRefresh();
+  });
   observer.observe(document.body, { childList: true, subtree: true });
 
   // First pass runs immediately — at document-idle Seerr's React tree may
@@ -376,7 +478,7 @@
   // Cross-tab sync: toggling in one Seerr tab updates any others live.
   // Guarded — Violentmonkey/older managers without this API just skip it.
   if (typeof GM_addValueChangeListener === 'function') {
-    for (const key of ['hideRequested', 'hideAvailable', 'hideBlocklisted']) {
+    for (const key of ['hideRequested', 'hideAvailable', 'hideDeleted']) {
       GM_addValueChangeListener(key, (_name, _oldValue, newValue, remote) => {
         if (remote) {
           state[key] = Boolean(newValue);

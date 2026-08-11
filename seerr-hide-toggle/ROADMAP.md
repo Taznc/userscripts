@@ -12,14 +12,16 @@ than implemented unprompted since they're taste calls, not bugs.
       explanation.~~ Shipped in v1.4.0: a dashed-border notice appears
       under any vertical grid whose cards are all hidden by the toggles.
 
-- [x] **Third toggle for Blocklisted items.** Shipped in v1.5.0: hides
-      `BLOCKLISTED` (red badge) titles, discriminated from `DELETED`
-      (also red) via the `text-white` class only the blocklist badge
-      carries in `StatusBadgeMini`.
+- [x] **Third toggle for red-badge items.** Shipped in v1.5.0 as a
+      Blocklisted toggle; replaced in v1.6.0 with a **Deleted** toggle
+      (trash icon) per user request — the red badges actually appearing on
+      their instance are `DELETED`, and they don't use blocklists. Deleted
+      is discriminated from blocklisted (also red) via `text-red-100` vs
+      `text-white` in `StatusBadgeMini`.
 
 - [x] **Match Seerr's own button styling.** Addressed in v1.5.0 by the
       icon redesign: each toggle is now a replica of the exact
       `StatusBadgeMini` badge it hides — same status colors
       (indigo/green/red at the badge's own values) and the same heroicons
-      Seerr uses (clock, check, eye-slash), with a slash struck through
+      Seerr uses (clock, check, trash), with a slash struck through
       when hiding is on.

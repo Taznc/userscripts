@@ -1,11 +1,14 @@
 # Seerr - Hide Requested/Available Toggle
 
-Two small toggle buttons injected into [Seerr](https://github.com/seerr-team/seerr)'s
-discover/home pages: **Hide Requested** and **Hide Available**. Flip one on
-and matching cards disappear from the grid — useful for browsing only what
-you don't already have. Each button shows a live count of what it's hiding
-(`Hide Requested: ON (12 hidden)`), a notice appears if a grid ends up
-fully hidden, and toggling in one Seerr tab syncs to any others.
+Three compact icon toggles injected into [Seerr](https://github.com/seerr-team/seerr)'s
+discover/home pages: **Hide Requested**, **Hide Available**, and **Hide
+Blocklisted**. Each toggle is a replica of the exact status badge it hides
+— the same colored circle and icon Seerr puts on cards (indigo clock =
+requested, green check = available, red eye-slash = blocklisted) — with a
+white slash struck through it while hiding is on, plus a live count of how
+many cards it's currently hiding. Hover any toggle for a full-sentence
+explanation. A notice appears if a grid ends up fully hidden, and toggling
+in one Seerr tab syncs to any others.
 
 ## Install
 
@@ -48,7 +51,10 @@ shifts a shade in a future Seerr version.
 yellow badge) — an earlier version of this script only matched indigo,
 which silently missed anything that had been requested but wasn't yet
 processing. **Hide Available** hides both fully- and partially-available
-items (both render the same green badge in Seerr).
+items (both render the same green badge in Seerr). **Hide Blocklisted**
+hides red blocklist badges only — deleted titles also render red, but the
+blocklist badge alone carries `text-white`, which is the discriminator, so
+deleted items are never hidden by mistake.
 
 ## Roadmap
 
@@ -60,9 +66,10 @@ Not-yet-built ideas live in [ROADMAP.md](ROADMAP.md).
 node --test 'test/*.test.js'
 ```
 
-14 unit tests cover the color-matching logic (with fixtures mirroring
-Seerr's real `StatusBadgeMini`/`TitleCard` class strings verbatim), the
-button labels, the filter-button finder, and the debounce helper, no DOM
-or browser needed. There's no browser harness for this script (unlike
+16 unit tests cover the color-matching logic (with fixtures mirroring
+Seerr's real `StatusBadgeMini`/`TitleCard` class strings verbatim),
+blocklist-vs-deleted discrimination, the tooltip text, the filter-button
+finder, and the debounce helper, no DOM or browser needed. The embedded
+heroicons SVG paths are diffed byte-for-byte against upstream heroicons. There's no browser harness for this script (unlike
 `seerr-request/`) — it manipulates your own private, authenticated Seerr
 instance, which isn't something to script fetches against from outside.

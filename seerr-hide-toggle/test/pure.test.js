@@ -24,7 +24,8 @@ test('module loads under node without booting', () => {
   assert.equal(typeof S.isRequested, 'function');
   assert.equal(typeof S.isAvailable, 'function');
   assert.equal(typeof S.shouldHide, 'function');
-  assert.equal(typeof S.buttonLabel, 'function');
+  assert.equal(typeof S.isBlocklisted, 'function');
+  assert.equal(typeof S.toggleTitle, 'function');
 });
 
 // Class strings below mirror seerr-team/seerr's StatusBadgeMini verbatim.
@@ -55,6 +56,25 @@ test('no match: red badges (blocklisted/deleted) and unbadged cards are neither 
   const plain = card([]);
   assert.equal(S.isRequested(plain), false);
   assert.equal(S.isAvailable(plain), false);
+});
+
+test('isBlocklisted: matches the blocklist badge but NOT the deleted badge (both are red)', () => {
+  // Verbatim StatusBadgeMini class strings: text-white is the discriminator.
+  const blocklisted = card([badge('rounded-full shadow-md w-5 ring-1 p-0.5 bg-red-500/80 border-white ring-white text-white')]);
+  const deleted = card([badge('rounded-full shadow-md w-5 ring-1 p-0.5 bg-red-500/80 border-red-400 ring-red-400 text-red-100')]);
+  assert.equal(S.isBlocklisted(blocklisted), true);
+  assert.equal(S.isBlocklisted(deleted), false);
+  assert.equal(S.isBlocklisted(card([])), false);
+});
+
+test('shouldHide: blocklist toggle hides blocklisted only, never deleted', () => {
+  const blocklisted = card([badge('rounded-full bg-red-500/80 border-white text-white')]);
+  const deleted = card([badge('rounded-full bg-red-500/80 border-red-400 text-red-100')]);
+  const on = { hideRequested: false, hideAvailable: false, hideBlocklisted: true };
+  assert.equal(S.shouldHide(blocklisted, on), true);
+  assert.equal(S.shouldHide(deleted, on), false);
+  const off = { hideRequested: true, hideAvailable: true, hideBlocklisted: false };
+  assert.equal(S.shouldHide(blocklisted, off), false);
 });
 
 test('no match: media-type pill (bg-blue/bg-purple, rounded-full) never false-positives', () => {
@@ -93,11 +113,16 @@ test('shouldHide: only hides per the active toggles', () => {
   assert.equal(S.shouldHide(available, { hideRequested: false, hideAvailable: false }), false);
 });
 
-test('buttonLabel: OFF has no count, ON shows count only when nonzero', () => {
-  assert.equal(S.buttonLabel('Hide Requested', false, 12), 'Hide Requested: OFF');
-  assert.equal(S.buttonLabel('Hide Requested', true, 0), 'Hide Requested: ON');
-  assert.equal(S.buttonLabel('Hide Requested', true, 1), 'Hide Requested: ON (1 hidden)');
-  assert.equal(S.buttonLabel('Hide Available', true, 12), 'Hide Available: ON (12 hidden)');
+test('toggleTitle: OFF invites, ON explains with count', () => {
+  assert.equal(S.toggleTitle('requested titles', false, 12), 'Click to hide requested titles');
+  assert.equal(
+    S.toggleTitle('requested titles', true, 12),
+    'Hiding requested titles — 12 hidden on this page. Click to show them.'
+  );
+  assert.equal(
+    S.toggleTitle('blocklisted titles', true, 0),
+    'Hiding blocklisted titles — none on this page right now. Click to turn off.'
+  );
 });
 
 const fakeButton = (hasSvg, text) => ({

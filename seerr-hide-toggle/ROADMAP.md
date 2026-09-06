@@ -1,6 +1,10 @@
 # Roadmap
 
-Not built yet — ideas surfaced while reviewing the script, kept here rather
+**Status: all items shipped (as of v1.6.0).** Nothing here is outstanding —
+this file is kept as the record of what each idea became. New ideas go below
+the shipped list.
+
+Originally: ideas surfaced while reviewing the script, kept here rather
 than implemented unprompted since they're taste calls, not bugs.
 
 - [x] **Hidden-count feedback.** ~~Buttons currently show `Hide Requested:
